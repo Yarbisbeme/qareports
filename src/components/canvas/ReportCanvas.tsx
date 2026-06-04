@@ -72,7 +72,7 @@ export default function ReportCanvas() {
         {/* 1. RENDERIZAR BANDAS */}
         <div className="w-full relative z-0">
           {(report.Bandas || []).map((band, idx) => (
-            <BandRenderer key={`band-${idx}`} band={band} />
+            <BandRenderer key={`band-${idx}`} band={band} bandIdx={idx} />
           ))}
         </div>
 

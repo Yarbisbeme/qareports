@@ -16,6 +16,18 @@ export interface ReportBand {
   Objetos: IReportObject[];
 }
 
+export interface ReportObjectProps {
+  obj: IReportObject;
+  offsetVPos: number;
+  bandIdx: number; // <--- Nuevo
+  objIdx: number;  // <--- Nuevo
+}
+
+export interface BandRendererProps {
+  band: ReportBand;
+  bandIdx: number; 
+}
+
 export interface MetadataItem {
   Label: string;
   Expr: string;
@@ -49,8 +61,10 @@ export interface FoxProReport {
 export interface ReportStore {
   report: FoxProReport | null;
   selectedObj: IReportObject | null;
-  scale: number; // <--- Agregamos la propiedad al estado
+  selectedIndex: { bandIdx: number; objIdx: number } | null;
+  scale: number;
   setReport: (data: FoxProReport) => void;
-  setSelectedObj: (obj: IReportObject | null) => void;
-  autoScale: (containerWidth: number) => void; // <--- Definimos la función
+  setSelectedObj: (obj: IReportObject | null, bandIdx?: number, objIdx?: number) => void;
+  updateSelectedObject: (updates: Partial<IReportObject>) => void;
+  autoScale: (containerWidth: number) => void;
 }

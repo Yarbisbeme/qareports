@@ -15,9 +15,14 @@ export default function Topbar() {
     reader.onload = (e) => {
       try {
         const jsonContent = JSON.parse(e.target?.result as string);
+        console.log("JSON cargado exitosamente:", jsonContent); // <-- MIRA LA CONSOLA
         setReport(jsonContent as FoxProReport);
+        
+        event.target.value = ''; 
       } catch (error) {
-        alert("Error al leer el archivo JSON.");
+        console.error("Error al parsear:", error);
+        alert("Error al leer el archivo JSON. Verifica el formato.");
+        event.target.value = '';
       }
     };
     reader.readAsText(file);
@@ -34,8 +39,14 @@ export default function Topbar() {
         )}
       </div>
       
-      <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".json" className="hidden" />
-      
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileChange} 
+        accept=".json" 
+        className="hidden" 
+      />
+            
       <button 
         onClick={() => fileInputRef.current?.click()}
         className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-blue-700 transition-colors"

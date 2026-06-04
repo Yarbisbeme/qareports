@@ -1,24 +1,23 @@
-import { ReportBand } from '@/types/report';
+import React, { useRef } from 'react';
+import { BandRendererProps } from '@/types/report';
 import { fruToPx } from '@/lib/fruConverter';
 import ReportObject from './ReportObject';
 
-interface BandRendererProps {
-  band: ReportBand;
-}
+export default function BandRenderer({ band, bandIdx }: BandRendererProps) {
+  // Congelamos el techo de la banda para evitar la "Cinta de Correr"
+  const minVPosRef = useRef<number | null>(null);
 
-export default function BandRenderer({ band }: BandRendererProps) {
   if (!band.Objetos || band.Objetos.length === 0) return null;
 
-  // 1. EL SECRETO: El PageHeader SIEMPRE debe empezar en 0.
-  // Esto evita que "suba" y se coma el espacio donde dibujaremos la Metadata.
-  const minVPos = band.TipoBanda === 'PageHeader' 
-    ? 0 
-    : Math.min(...band.Objetos.map(o => o.VPos || 0));
+  if (minVPosRef.current === null) {
+    minVPosRef.current = band.TipoBanda === 'PageHeader' 
+      ? 0 
+      : Math.min(...band.Objetos.map(o => o.VPos || 0));
+  }
 
-  // 2. Filtramos objetos "rebeldes" que el DBF asignó mal
+  const minVPos = minVPosRef.current;
   const validObjects = band.Objetos.filter(o => (o.VPos - minVPos) < 20000);
 
-  // 3. Calculamos la altura basada SOLO en los objetos válidos
   const maxHeight = validObjects.reduce((max, obj) => {
     const relativeBottom = (obj.VPos - minVPos) + (obj.Height || 0);
     return relativeBottom > max ? relativeBottom : max;
@@ -37,10 +36,7 @@ export default function BandRenderer({ band }: BandRendererProps) {
   return (
     <div 
       className="relative w-full border-b border-dashed border-gray-300 overflow-visible"
-      style={{ 
-        height: `${bandHeight}px`, 
-        backgroundColor: bgColors[band.TipoBanda] || '#fff' 
-      }}
+      style={{ height: `${bandHeight}px`, backgroundColor: bgColors[band.TipoBanda] || '#fff' }}
     >
       <span className="absolute top-1 right-2 text-[9px] text-gray-400 font-mono select-none z-0">
         {band.TipoBanda} {band.AgrupaPor ? `(${band.AgrupaPor})` : ''} N{band.Nivel}
@@ -51,6 +47,8 @@ export default function BandRenderer({ band }: BandRendererProps) {
           key={idx} 
           obj={obj} 
           offsetVPos={minVPos} 
+          bandIdx={bandIdx} 
+          objIdx={idx}      
         />
       ))}
     </div>
