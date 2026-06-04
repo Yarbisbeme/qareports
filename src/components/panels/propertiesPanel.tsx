@@ -3,22 +3,40 @@ import { useReportStore } from '@/store/useReportStore';
 import { fruToPx } from '@/lib/fruConverter';
 
 export default function PropertiesPanel() {
-  const selectedObj = useReportStore((state) => state.selectedObj);
-  const updateSelectedObject = useReportStore((state) => state.updateSelectedObject);
+  const selectedIndices = useReportStore((state) => state.selectedIndices);
+  const report = useReportStore((state) => state.report);
+  const updateSelectedObjects = useReportStore((state) => state.updateSelectedObjects);
 
-  if (!selectedObj) {
+  if (selectedIndices.length === 0 || !report) {
     return (
       <div className="text-center py-8 text-gray-400 text-sm italic">
-        Haz clic sobre cualquier objeto en el lienzo para editar sus propiedades.
+        Haz clic sobre un objeto o usa Ctrl+Clic para selección múltiple.
       </div>
     );
   }
 
-  // Manejador genérico para los inputs numéricos
+  if (selectedIndices.length > 1) {
+    return (
+      <div className="space-y-4 animate-fadeIn">
+        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider border-b pb-2">Selección Múltiple</h3>
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-md text-center text-blue-800 font-medium">
+          {selectedIndices.length} objetos seleccionados
+        </div>
+        <p className="text-xs text-gray-500 text-center">
+          Arrastra para mover el grupo. La edición individual está deshabilitada.
+        </p>
+      </div>
+    );
+  }
+
+  // Si hay exactamente 1 objeto seleccionado, mostramos el panel normal
+  const { bandIdx, objIdx } = selectedIndices[0];
+  const selectedObj = report.Bandas[bandIdx].Objetos[objIdx];
+
   const handleNumberChange = (field: keyof typeof selectedObj, value: string) => {
     const num = parseInt(value, 10);
     if (!isNaN(num)) {
-      updateSelectedObject({ [field]: num });
+      updateSelectedObjects({ [field]: num });
     }
   };
 
@@ -42,7 +60,6 @@ export default function PropertiesPanel() {
         </div>
       </div>
 
-      {/* Editor Interactivo */}
       <div className="border rounded-md overflow-hidden bg-white shadow-sm mt-4">
         <table className="w-full text-left border-collapse text-xs">
           <thead>

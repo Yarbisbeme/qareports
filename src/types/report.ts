@@ -58,15 +58,27 @@ export interface FoxProReport {
   Bandas: ReportBand[];
 }
 
+export interface SelectionItem {
+  bandIdx: number;
+  objIdx: number;
+}
+
 export interface ReportStore {
   report: FoxProReport | null;
-  selectedObj: IReportObject | null;
-  selectedIndex: { bandIdx: number; objIdx: number } | null;
-  scale: number;
-  setReport: (data: FoxProReport) => void;
-  setSelectedObj: (obj: IReportObject | null, bandIdx?: number, objIdx?: number) => void;
-  updateSelectedObject: (updates: Partial<IReportObject>) => void;
-  autoScale: (containerWidth: number) => void;
+  selectedIndices: SelectionItem[];
+  
+  dragSnapshot: { bandIdx: number, objIdx: number, hPos: number, vPos: number, width: number, height: number }[];
   snapLines: { hPos: number | null, vPos: number | null, bandIdx: number | null };
+  scale: number;
+
+  setReport: (data: FoxProReport) => void;
   setSnapLines: (lines: { hPos: number | null, vPos: number | null, bandIdx: number | null }) => void;
+  
+  toggleSelection: (bandIdx: number, objIdx: number, multi: boolean) => void;
+  updateSelectedObjects: (updates: Partial<IReportObject>) => void;
+  
+  captureSnapshot: () => void;
+  applySnapshotDelta: (deltaX: number, deltaY: number, isResize?: boolean) => void;
+
+  autoScale: (containerWidth: number) => void;
 }
