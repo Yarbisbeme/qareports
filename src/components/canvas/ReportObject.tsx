@@ -27,6 +27,7 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx }: Repor
     setIsDragging(true);
   };
 
+
   // Iniciar Redimensionamiento
   const handleMouseDownResize = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -36,6 +37,8 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx }: Repor
     setIsResizing(true);
   };
 
+  const setSnapLines = useReportStore((state) => state.setSnapLines);
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging && !isResizing) return;
@@ -44,53 +47,56 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx }: Repor
       const deltaPxY = (e.clientY - startMouse.current.y) / scale;
 
       if (isDragging) {
-        // 1. Calculamos dónde QUIERE ir el ratón (Posición cruda)
         let intendedHPos = startMetrics.current.hPos + pxToFru(deltaPxX);
         let intendedVPos = startMetrics.current.vPos + pxToFru(deltaPxY);
 
-        // ==========================================
-        // 🧲 MOTOR DE ALINEACIÓN MAGNÉTICA (SNAPPING)
-        // ==========================================
-        const snapThreshold = 150; // Sensibilidad del imán en FRUs (aprox 1.5 px)
+        // --- MOTOR DE GUÍAS INTELIGENTES ---
+        const snapThreshold = 150; 
         const currentReport = useReportStore.getState().report;
         
+        let snappedHPos: number | null = null;
+        let snappedVPos: number | null = null;
+
         if (currentReport) {
-          const peers = currentReport.Bandas[bandIdx].Objetos;
-          
           let closestH = intendedHPos;
           let closestV = intendedVPos;
           let minDiffH = snapThreshold;
           let minDiffV = snapThreshold;
 
-          // Escaneamos a los vecinos
-          peers.forEach((peer, i) => {
-            if (i === objIdx) return; // No nos comparamos con nosotros mismos
+          // Escaneamos TODOS los objetos de TODAS las bandas
+          currentReport.Bandas.forEach((b, bIdx) => {
+            b.Objetos.forEach((peer, pIdx) => {
+              if (bIdx === bandIdx && pIdx === objIdx) return; // Ignorarnos a nosotros mismos
 
-            // --- Alineación Horizontal (Izquierda) ---
-            const diffH = Math.abs(intendedHPos - peer.HPos);
-            if (diffH < minDiffH) {
-              minDiffH = diffH;
-              closestH = peer.HPos; // ¡Imantado a la izquierda del vecino!
-            }
+              // Atracción Horizontal (Para alinear columnas)
+              const diffH = Math.abs(intendedHPos - peer.HPos);
+              if (diffH < minDiffH) {
+                minDiffH = diffH;
+                closestH = peer.HPos;
+                snappedHPos = peer.HPos; // ¡Imantado X!
+              }
 
-            // --- Alineación Vertical (Arriba) ---
-            const diffV = Math.abs(intendedVPos - peer.VPos);
-            if (diffV < minDiffV) {
-              minDiffV = diffV;
-              closestV = peer.VPos; // ¡Imantado al techo del vecino!
-            }
+              // Atracción Vertical (Solo dentro de la misma banda)
+              if (bIdx === bandIdx) {
+                const diffV = Math.abs(intendedVPos - peer.VPos);
+                if (diffV < minDiffV) {
+                  minDiffV = diffV;
+                  closestV = peer.VPos;
+                  snappedVPos = peer.VPos; // ¡Imantado Y!
+                }
+              }
+            });
           });
 
-          // Asignamos las coordenadas (ya sea la cruda o la imantada)
           intendedHPos = closestH;
           intendedVPos = closestV;
         }
-        // ==========================================
 
-        updateSelectedObject({
-          HPos: intendedHPos,
-          VPos: intendedVPos
-        });
+        // Encendemos las guías visuales en la pantalla
+        setSnapLines({ hPos: snappedHPos, vPos: snappedVPos, bandIdx });
+
+        updateSelectedObject({ HPos: intendedHPos, VPos: intendedVPos });
+
       } else if (isResizing) {
         updateSelectedObject({
           Width: Math.max(10, startMetrics.current.width + pxToFru(deltaPxX)),
@@ -102,6 +108,8 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx }: Repor
     const handleMouseUp = () => {
       setIsDragging(false);
       setIsResizing(false);
+      // Apagamos las líneas al soltar el ratón
+      setSnapLines({ hPos: null, vPos: null, bandIdx: null });
     };
 
     if (isDragging || isResizing) {
@@ -113,8 +121,7 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx }: Repor
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, isResizing, scale, updateSelectedObject, bandIdx, objIdx]); // <-- Agregamos bandIdx y objIdx a las dependencias
-
+  }, [isDragging, isResizing, scale, updateSelectedObject, setSnapLines, bandIdx, objIdx]);
   // Cálculos visuales
   const top = fruToPx(obj.VPos) - fruToPx(offsetVPos);
   const left = fruToPx(obj.HPos);

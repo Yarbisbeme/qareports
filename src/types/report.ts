@@ -67,4 +67,6 @@ export interface ReportStore {
   setSelectedObj: (obj: IReportObject | null, bandIdx?: number, objIdx?: number) => void;
   updateSelectedObject: (updates: Partial<IReportObject>) => void;
   autoScale: (containerWidth: number) => void;
+  snapLines: { hPos: number | null, vPos: number | null, bandIdx: number | null };
+  setSnapLines: (lines: { hPos: number | null, vPos: number | null, bandIdx: number | null }) => void;
 }

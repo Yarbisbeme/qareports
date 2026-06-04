@@ -6,6 +6,7 @@ import BandRenderer from './BandRenderer';
 export default function ReportCanvas() {
   const report = useReportStore((state) => state.report);
   const scale = useReportStore((state) => state.scale);
+  const snapLines = useReportStore((state) => state.snapLines);
 
   if (!report) {
     return (
@@ -30,7 +31,14 @@ export default function ReportCanvas() {
         className="bg-white shadow-2xl ring-1 ring-black/10 relative origin-top transition-all duration-300"
         style={{ width: paperWidth, minHeight: paperMinHeight, height: 'auto', transform: `scale(${scale})` }}
       >
-        
+
+        {snapLines.hPos !== null && (
+          <div 
+            className="absolute top-0 bottom-0 w-[1px] bg-red-500 z-50 pointer-events-none"
+            style={{ left: `${fruToPx(snapLines.hPos)}px` }} 
+          />
+        )}
+
         {/* === METADATA GLOBAL (Aplicando FontSize nativo en 'pt') === */}
         {report.Metadata && (
           <>

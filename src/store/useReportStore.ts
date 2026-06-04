@@ -6,6 +6,9 @@ export const useReportStore = create<ReportStore>((set) => ({
   selectedObj: null,
   selectedIndex: null,
   scale: 1,
+
+  snapLines: { hPos: null, vPos: null, bandIdx: null },
+  setSnapLines: (lines) => set({ snapLines: lines }),
   
   setReport: (data) => set({ report: data, selectedObj: null, selectedIndex: null, scale: 1 }),
   

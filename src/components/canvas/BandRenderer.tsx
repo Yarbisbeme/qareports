@@ -2,11 +2,12 @@ import React, { useRef } from 'react';
 import { BandRendererProps } from '@/types/report';
 import { fruToPx } from '@/lib/fruConverter';
 import ReportObject from './ReportObject';
+import { useReportStore } from '@/store/useReportStore';
 
 export default function BandRenderer({ band, bandIdx }: BandRendererProps) {
   // Congelamos el techo de la banda para evitar la "Cinta de Correr"
   const minVPosRef = useRef<number | null>(null);
-
+  const snapLines = useReportStore(state => state.snapLines);
   if (!band.Objetos || band.Objetos.length === 0) return null;
 
   if (minVPosRef.current === null) {
@@ -41,6 +42,13 @@ export default function BandRenderer({ band, bandIdx }: BandRendererProps) {
       <span className="absolute top-1 right-2 text-[9px] text-gray-400 font-mono select-none z-0">
         {band.TipoBanda} {band.AgrupaPor ? `(${band.AgrupaPor})` : ''} N{band.Nivel}
       </span>
+
+      {snapLines.vPos !== null && snapLines.bandIdx === bandIdx && (
+        <div 
+          className="absolute left-0 right-0 h-[1px] bg-red-500 z-50 pointer-events-none"
+          style={{ top: `${fruToPx(snapLines.vPos) - fruToPx(minVPos)}px` }} 
+        />
+      )}
 
       {validObjects.map((obj, idx) => (
         <ReportObject 
