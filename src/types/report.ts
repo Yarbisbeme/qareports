@@ -1,11 +1,12 @@
-// src/types/report.ts
 export interface IReportObject {
   TipoObj: "Label" | "Field" | "Shape" | "Line" | "Picture";
   Expr: string;
+  Name?: string;     // <--- Nueva propiedad
   VPos: number;
   HPos: number;
   Width?: number;
   Height?: number;
+  FontSize?: number; // <--- Nueva propiedad
 }
 
 export interface ReportBand {
@@ -20,6 +21,7 @@ export interface MetadataItem {
   Expr: string;
   VPos: number;
   HPos: number;
+  FontSize?: number; // <--- Agregado
 }
 
 export interface ReportMetadata {
@@ -33,6 +35,7 @@ export interface SystemVariable {
   Expr: string;
   VPos: number;
   HPos: number;
+  FontSize: number;
 }
 
 export interface FoxProReport {
