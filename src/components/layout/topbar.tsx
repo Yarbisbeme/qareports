@@ -1,6 +1,7 @@
 import { useRef, ChangeEvent } from 'react';
 import { useReportStore } from '@/store/useReportStore';
 import { FoxProReport } from '@/types/report';
+import { exportSanitizedJson } from '@/lib/exportQaJson';
 
 export default function Topbar() {
   const report = useReportStore((state) => state.report);
@@ -52,6 +53,16 @@ export default function Topbar() {
         className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-blue-700 transition-colors"
       >
         {report ? 'Cargar otro JSON' : 'Cargar JSON'}
+      </button>
+
+      <button 
+        onClick={() => {
+          const report = useReportStore.getState().report;
+          if (report) exportSanitizedJson(report);
+        }}
+        className="px-4 py-2 bg-green-600 text-white text-sm font-bold rounded shadow hover:bg-green-700"
+      >
+        Exportar JSON (Motor PDF)
       </button>
     </header>
   );

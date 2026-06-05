@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useReportStore } from '@/store/useReportStore';
 import { fruToPx } from '@/lib/fruConverter';
 import BandRenderer from './BandRenderer';
+import ReportObject from './ReportObject'; // <-- IMPORTANTE: Volvemos a importar ReportObject
 
 export default function ReportCanvas() {
   const report = useReportStore((state) => state.report);
@@ -11,13 +12,13 @@ export default function ReportCanvas() {
   const deleteSelected = useReportStore((state) => state.deleteSelected);
   const undo = useReportStore((state) => state.undo);
   const redo = useReportStore((state) => state.redo);
-  const nudgeSelected = useReportStore((state) => state.nudgeSelected);
+  const nudgeSelected = useReportStore((state) => state.nudgeSelected); // <-- RECUPERADO
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (document.activeElement?.tagName === 'INPUT') return;
 
-      const NUDGE_STEP = e.shiftKey ? 1000 : 100;
+      const NUDGE_STEP = e.shiftKey ? 1000 : 100; // <-- RECUPERADO
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
         deleteSelected();
@@ -29,6 +30,7 @@ export default function ReportCanvas() {
         e.preventDefault();
         redo();
       }
+      // === FLECHAS DEL TECLADO RECUPERADAS ===
       else if (e.key === 'ArrowUp') {
         e.preventDefault();
         nudgeSelected(0, -NUDGE_STEP);
@@ -46,7 +48,7 @@ export default function ReportCanvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [deleteSelected, undo, redo]);
+  }, [deleteSelected, undo, redo, nudgeSelected]);
 
   if (!report) {
     return (
@@ -72,11 +74,51 @@ export default function ReportCanvas() {
         style={{ width: paperWidth, minHeight: paperMinHeight, height: 'auto', transform: `scale(${scale})` }}
       >
 
+        {/* LÍNEAS GUÍA MAGNÉTICAS (SNAPPING) */}
         {snapLines.hPos !== null && (
           <div 
             className="absolute top-0 bottom-0 w-[1px] bg-red-500 z-50 pointer-events-none"
             style={{ left: `${fruToPx(snapLines.hPos)}px` }} 
           />
+        )}
+        {snapLines.vPos !== null && (
+          <div 
+            className="absolute left-0 right-0 h-[1px] bg-red-500 z-50 pointer-events-none"
+            style={{ top: `${fruToPx(snapLines.vPos)}px` }} 
+          />
+        )}
+
+        {/* === METADATA GLOBAL INTERACTIVA === */}
+        {report.Metadata && (
+          <>
+            {report.Metadata.Company?.Expr && report.Metadata.Company.VPos >= 0 && (
+              <ReportObject 
+                obj={report.Metadata.Company} 
+                offsetVPos={0} 
+                type="meta" 
+                metaKey="Company" 
+                customClass="bg-transparent text-gray-900 uppercase font-bold" 
+              />
+            )}
+            {report.Metadata.Title?.Expr && report.Metadata.Title.VPos >= 0 && (
+              <ReportObject 
+                obj={report.Metadata.Title} 
+                offsetVPos={0} 
+                type="meta" 
+                metaKey="Title" 
+                customClass="bg-transparent text-gray-800 uppercase font-bold" 
+              />
+            )}
+            {report.Metadata.Subtitle?.Expr && report.Metadata.Subtitle.VPos >= 0 && (
+              <ReportObject 
+                obj={report.Metadata.Subtitle} 
+                offsetVPos={0} 
+                type="meta" 
+                metaKey="Subtitle" 
+                customClass="bg-transparent text-gray-600" 
+              />
+            )}
+          </>
         )}
 
         {/* 1. RENDERIZAR BANDAS */}
@@ -86,24 +128,17 @@ export default function ReportCanvas() {
           ))}
         </div>
 
-        {/* 2. RENDERIZAR VARIABLES DE SISTEMA */}
-        {(report.VariablesSistema || []).map((sysVar, idx) => {
-          const top = fruToPx(sysVar.VPos || 0);
-          const left = fruToPx(sysVar.HPos || 0);
-          
-          return (
-            <div key={`sysvar-${idx}`} 
-                 className="absolute flex items-center gap-1 text-green-800 bg-green-50 border border-green-300 px-1.5 py-0.5 rounded shadow-sm z-30 opacity-90"
-                 style={{ 
-                   top: `${top}px`, 
-                   left: `${left}px`,
-                   fontSize: `${sysVar.FontSize || 8}pt` // <--- APLICADO A VARIABLES
-                 }}>
-              {sysVar.Label && <span className="font-bold">{sysVar.Label.replace(/['"]/g, '')}</span>}
-              <span className="font-mono">{sysVar.Expr}</span>
-            </div>
-          );
-        })}
+        {/* 2. RENDERIZAR VARIABLES DE SISTEMA INTERACTIVAS */}
+        {(report.VariablesSistema || []).map((sysVar, idx) => (
+          <ReportObject 
+            key={`sys-${idx}`} 
+            obj={sysVar} 
+            offsetVPos={0} 
+            type="sysvar" 
+            sysIdx={idx} 
+            customClass="bg-green-50/80 border-green-300 text-green-800" 
+          />
+        ))}
       </div>
     </div>
   );

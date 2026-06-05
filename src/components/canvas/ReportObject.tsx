@@ -1,9 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { FoxProReport, ReportObjectProps } from '@/types/report';
+import { FoxProReport, ReportObjectProps, SelectionItem } from '@/types/report';
 import { fruToPx, pxToFru } from '@/lib/fruConverter'; 
 import { useReportStore } from '@/store/useReportStore';
 
-export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx }: ReportObjectProps) {
+export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx, type = 'band', metaKey, sysIdx, customClass }: ReportObjectProps) {
   const selectedIndices = useReportStore((state) => state.selectedIndices);
   const toggleSelection = useReportStore((state) => state.toggleSelection);
   const captureSnapshot = useReportStore((state) => state.captureSnapshot);
@@ -11,21 +11,53 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx }: Repor
   const setSnapLines = useReportStore((state) => state.setSnapLines);
   const scale = useReportStore((state) => state.scale);
 
-  const isSelected = selectedIndices.some(i => i.bandIdx === bandIdx && i.objIdx === objIdx);
+  const selItem: SelectionItem = { type, bandIdx, objIdx, metaKey, sysIdx };
+
+  const isSelected = selectedIndices.some(s => 
+    s.type === type && s.bandIdx === bandIdx && s.objIdx === objIdx && s.metaKey === metaKey && s.sysIdx === sysIdx
+  );
   
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
 
   const startMouse = useRef({ x: 0, y: 0 });
   const startMetrics = useRef({ hPos: 0, vPos: 0, width: 0, height: 0 });
-
-  const saveHistory = useReportStore((state) => state.saveHistory);
+  const snapEdges = useRef<{ h: number[], v: number[] }>({ h: [], v: [] });
   const reportBeforeDrag = useRef<FoxProReport | null>(null);
+  const saveHistory = useReportStore((state) => state.saveHistory);
+
+  // === RECOLECTOR DE BORDES PARA EL IMÁN ===
+  const populateSnapEdges = () => {
+    const report = useReportStore.getState().report;
+    const selected = useReportStore.getState().selectedIndices;
+    const h = new Set<number>();
+    const v = new Set<number>();
+
+    if (!report) return;
+
+    const addEdges = (o: any, isSel: boolean) => {
+      if (isSel || !o) return;
+      if (o.HPos !== undefined) h.add(o.HPos);
+      if (o.HPos !== undefined && o.Width) h.add(o.HPos + o.Width);
+      if (o.VPos !== undefined) v.add(o.VPos);
+      if (o.VPos !== undefined && o.Height) v.add(o.VPos + o.Height);
+    };
+
+    report.Bandas.forEach((b, bI) => b.Objetos.forEach((o, oI) => addEdges(o, selected.some(s => s.type === 'band' && s.bandIdx === bI && s.objIdx === oI))));
+    if (report.Metadata) ['Company', 'Title', 'Subtitle'].forEach(k => {
+      const m = report.Metadata[k as keyof typeof report.Metadata];
+      if (m && m.VPos >= 0) addEdges(m, selected.some(s => s.type === 'meta' && s.metaKey === k));
+    });
+    if (report.VariablesSistema) report.VariablesSistema.forEach((sv, svI) => addEdges(sv, selected.some(s => s.type === 'sysvar' && s.sysIdx === svI)));
+
+    snapEdges.current = { h: Array.from(h), v: Array.from(v) };
+  };
 
   const handleMouseDownDrag = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isSelected || e.ctrlKey || e.shiftKey) toggleSelection(bandIdx, objIdx, e.ctrlKey || e.shiftKey);
+    if (!isSelected || e.ctrlKey || e.shiftKey) toggleSelection(selItem, e.ctrlKey || e.shiftKey);
     captureSnapshot();
+    populateSnapEdges();
     reportBeforeDrag.current = useReportStore.getState().report;
     startMouse.current = { x: e.clientX, y: e.clientY };
     startMetrics.current = { hPos: obj.HPos, vPos: obj.VPos, width: obj.Width || 0, height: obj.Height || 0 };
@@ -34,8 +66,9 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx }: Repor
 
   const handleMouseDownResize = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isSelected || e.ctrlKey || e.shiftKey) toggleSelection(bandIdx, objIdx, e.ctrlKey || e.shiftKey);
+    if (!isSelected || e.ctrlKey || e.shiftKey) toggleSelection(selItem, e.ctrlKey || e.shiftKey);
     captureSnapshot();
+    populateSnapEdges();
     reportBeforeDrag.current = useReportStore.getState().report;
     startMouse.current = { x: e.clientX, y: e.clientY };
     startMetrics.current = { hPos: obj.HPos, vPos: obj.VPos, width: obj.Width || 0, height: obj.Height || 0 };
@@ -45,236 +78,108 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx }: Repor
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging && !isResizing) return;
-
-      const deltaPxX = (e.clientX - startMouse.current.x) / scale;
-      const deltaPxY = (e.clientY - startMouse.current.y) / scale;
+      const rawDeltaFruX = pxToFru((e.clientX - startMouse.current.x) / scale);
+      const rawDeltaFruY = pxToFru((e.clientY - startMouse.current.y) / scale);
       
-      const rawDeltaFruX = pxToFru(deltaPxX);
-      const rawDeltaFruY = pxToFru(deltaPxY);
-
-      const snapThreshold = 150; 
-      const currentReport = useReportStore.getState().report;
+      const snapThreshold = 150; // Sensibilidad del imán
       let snappedHPos: number | null = null;
       let snappedVPos: number | null = null;
 
-      // ==========================================
-      // 1. MODO ARRASTRE (Movimiento de Izquierda/Arriba)
-      // ==========================================
       if (isDragging) {
         let intendedHPos = startMetrics.current.hPos + rawDeltaFruX;
         let intendedVPos = startMetrics.current.vPos + rawDeltaFruY;
 
-        if (currentReport) {
-          let closestH = intendedHPos;
-          let closestV = intendedVPos;
-          let minDiffH = snapThreshold;
-          let minDiffV = snapThreshold;
+        let closestH = intendedHPos, minDiffH = snapThreshold;
+        snapEdges.current.h.forEach(edge => {
+          const diffL = Math.abs(intendedHPos - edge);
+          if (diffL < minDiffH) { minDiffH = diffL; closestH = edge; snappedHPos = edge; }
+          const diffR = Math.abs((intendedHPos + startMetrics.current.width) - edge);
+          if (diffR < minDiffH) { minDiffH = diffR; closestH = edge - startMetrics.current.width; snappedHPos = edge; }
+        });
 
-          currentReport.Bandas.forEach((b, bIdx) => {
-            b.Objetos.forEach((peer, pIdx) => {
-              const peerIsSelected = useReportStore.getState().selectedIndices.some(sel => sel.bandIdx === bIdx && sel.objIdx === pIdx);
-              if (peerIsSelected) return; 
+        let closestV = intendedVPos, minDiffV = snapThreshold;
+        snapEdges.current.v.forEach(edge => {
+          const diffT = Math.abs(intendedVPos - edge);
+          if (diffT < minDiffV) { minDiffV = diffT; closestV = edge; snappedVPos = edge; }
+          const diffB = Math.abs((intendedVPos + startMetrics.current.height) - edge);
+          if (diffB < minDiffV) { minDiffV = diffB; closestV = edge - startMetrics.current.height; snappedVPos = edge; }
+        });
 
-              // Imán Horizontal: Busca alinear con bordes izq y der
-              const peerEdgesH = [peer.HPos, peer.HPos + (peer.Width || 0)];
-              peerEdgesH.forEach(edge => {
-                const diffH = Math.abs(intendedHPos - edge);
-                if (diffH < minDiffH) {
-                  minDiffH = diffH;
-                  closestH = edge;
-                  snappedHPos = edge;
-                }
-              });
-
-              // Imán Vertical
-              if (bIdx === bandIdx) {
-                const peerEdgesV = [peer.VPos, peer.VPos + (peer.Height || 0)];
-                peerEdgesV.forEach(edge => {
-                  const diffV = Math.abs(intendedVPos - edge);
-                  if (diffV < minDiffV) {
-                    minDiffV = diffV;
-                    closestV = edge;
-                    snappedVPos = edge;
-                  }
-                });
-              }
-            });
-          });
-
-          intendedHPos = closestH;
-          intendedVPos = closestV;
-        }
-
-        setSnapLines({ hPos: snappedHPos, vPos: snappedVPos, bandIdx });
-        const finalDeltaX = intendedHPos - startMetrics.current.hPos;
-        const finalDeltaY = intendedVPos - startMetrics.current.vPos;
-        applySnapshotDelta(finalDeltaX, finalDeltaY, false);
-
-      // ==========================================
-      // 2. MODO REDIMENSIONAMIENTO (Movimiento de Derecha/Abajo)
-      // ==========================================
-      } else if (isResizing) {
+        setSnapLines({ hPos: snappedHPos, vPos: snappedVPos, bandIdx: null });
+        applySnapshotDelta(closestH - startMetrics.current.hPos, closestV - startMetrics.current.vPos, false);
+      } 
+      else if (isResizing) {
         let intendedWidth = Math.max(10, startMetrics.current.width + rawDeltaFruX);
         let intendedHeight = Math.max(10, startMetrics.current.height + rawDeltaFruY);
 
-        // En resize, lo que queremos alinear es el borde DERECHO y el borde INFERIOR
-        let intendedRightEdge = startMetrics.current.hPos + intendedWidth;
-        let intendedBottomEdge = startMetrics.current.vPos + intendedHeight;
+        let rightEdge = startMetrics.current.hPos + intendedWidth;
+        let bottomEdge = startMetrics.current.vPos + intendedHeight;
 
-        if (currentReport) {
-          let closestRight = intendedRightEdge;
-          let closestBottom = intendedBottomEdge;
-          let minDiffH = snapThreshold;
-          let minDiffV = snapThreshold;
+        let minDiffH = snapThreshold;
+        snapEdges.current.h.forEach(edge => {
+          const diff = Math.abs(rightEdge - edge);
+          if (diff < minDiffH) { minDiffH = diff; rightEdge = edge; snappedHPos = edge; }
+        });
 
-          currentReport.Bandas.forEach((b, bIdx) => {
-            b.Objetos.forEach((peer, pIdx) => {
-              const peerIsSelected = useReportStore.getState().selectedIndices.some(sel => sel.bandIdx === bIdx && sel.objIdx === pIdx);
-              if (peerIsSelected) return; 
+        let minDiffV = snapThreshold;
+        snapEdges.current.v.forEach(edge => {
+          const diff = Math.abs(bottomEdge - edge);
+          if (diff < minDiffV) { minDiffV = diff; bottomEdge = edge; snappedVPos = edge; }
+        });
 
-              // Imán Horizontal: ¿Se alinea mi borde derecho con algo?
-              const peerEdgesH = [peer.HPos, peer.HPos + (peer.Width || 0)];
-              peerEdgesH.forEach(edge => {
-                const diffH = Math.abs(intendedRightEdge - edge);
-                if (diffH < minDiffH) {
-                  minDiffH = diffH;
-                  closestRight = edge;
-                  snappedHPos = edge; // Dibuja la línea donde hizo el "snap"
-                }
-              });
-
-              // Imán Vertical: ¿Se alinea mi borde inferior con algo?
-              if (bIdx === bandIdx) {
-                const peerEdgesV = [peer.VPos, peer.VPos + (peer.Height || 0)];
-                peerEdgesV.forEach(edge => {
-                  const diffV = Math.abs(intendedBottomEdge - edge);
-                  if (diffV < minDiffV) {
-                    minDiffV = diffV;
-                    closestBottom = edge;
-                    snappedVPos = edge;
-                  }
-                });
-              }
-            });
-          });
-
-          // Re-calculamos el Width/Height final basado en si hubo imán o no
-          intendedWidth = Math.max(10, closestRight - startMetrics.current.hPos);
-          intendedHeight = Math.max(10, closestBottom - startMetrics.current.vPos);
-        }
-
-        setSnapLines({ hPos: snappedHPos, vPos: snappedVPos, bandIdx });
-        const finalDeltaW = intendedWidth - startMetrics.current.width;
-        const finalDeltaH = intendedHeight - startMetrics.current.height;
-        applySnapshotDelta(finalDeltaW, finalDeltaH, true);
+        setSnapLines({ hPos: snappedHPos, vPos: snappedVPos, bandIdx: null });
+        applySnapshotDelta((rightEdge - startMetrics.current.hPos) - startMetrics.current.width, (bottomEdge - startMetrics.current.vPos) - startMetrics.current.height, true);
       }
     };
 
     const handleMouseUp = () => {
-      if (isDragging || isResizing) {
-        const store = useReportStore.getState();
-        const objNow = store.report?.Bandas[bandIdx].Objetos[objIdx];
-        if (objNow) {
-          const moved = objNow.HPos !== startMetrics.current.hPos || objNow.VPos !== startMetrics.current.vPos;
-          const resized = objNow.Width !== startMetrics.current.width || objNow.Height !== startMetrics.current.height;
-
-          if ((moved || resized) && reportBeforeDrag.current) {
-            saveHistory(reportBeforeDrag.current);
-          }
-        }
-      }
-
+      if ((isDragging || isResizing) && reportBeforeDrag.current) saveHistory(reportBeforeDrag.current);
       setIsDragging(false);
       setIsResizing(false);
       setSnapLines({ hPos: null, vPos: null, bandIdx: null });
     };
 
-    if (isDragging || isResizing) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-    }
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isDragging, isResizing, scale, applySnapshotDelta, setSnapLines, bandIdx, objIdx]);
+    if (isDragging || isResizing) { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); }
+    return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
+  }, [isDragging, isResizing, scale, applySnapshotDelta, setSnapLines, saveHistory]);
 
-  // Cálculos de renderizado
   const top = fruToPx(obj.VPos) - fruToPx(offsetVPos);
   const left = fruToPx(obj.HPos);
-  const rawWidth = fruToPx(obj.Width || 0);
-  const rawHeight = fruToPx(obj.Height || 0);
+  const width = obj.Width ? fruToPx(obj.Width) : undefined;
+  const height = obj.Height ? fruToPx(obj.Height) : undefined;
 
-  const isField = obj.TipoObj === "Field";
-  const isShape = obj.TipoObj === "Shape";
-  const isLine = obj.TipoObj === "Line";
-  const isPicture = obj.TipoObj === "Picture";
-  const isGraphic = isShape || isLine || isPicture;
+  const baseStyle: React.CSSProperties = { 
+    top: `${top}px`, 
+    left: `${left}px`, 
+    width, 
+    height, 
+    fontSize: `${obj.FontSize || 9}pt`,
+    lineHeight: 1, 
+    padding: 0 
+  };
 
-  const width = isGraphic ? rawWidth : Math.max(rawWidth, 6);
-  const height = isGraphic ? rawHeight : Math.max(rawHeight, 14);
-
-  if (isShape) {
+  if (obj.TipoObj === "Shape" || obj.TipoObj === "Line" || obj.TipoObj === "Picture") {
     return (
-      <div onMouseDown={handleMouseDownDrag}
-           className={`absolute border border-gray-400 bg-gray-100/30 cursor-move ${isSelected ? 'ring-2 ring-blue-500 z-40' : ''}`}
-           style={{ top: `${top}px`, left: `${left}px`, width: `${width}px`, height: `${height}px` }}>
-        {isSelected && (
-           <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-blue-600 border border-white cursor-nwse-resize z-50 rounded-sm"
-                onMouseDown={handleMouseDownResize} />
-        )}
-      </div>
-    );
-  }
-
-  if (isLine) {
-    const isVertical = rawWidth <= 2; 
-    return (
-      <div onMouseDown={handleMouseDownDrag}
-           className={`absolute cursor-move ${isVertical ? 'border-l border-gray-500' : 'border-t border-gray-500'} ${isSelected ? 'ring-2 ring-blue-500 z-40' : ''}`}
-           style={{ top: `${top}px`, left: `${left}px`, width: isVertical ? '1px' : `${width}px`, height: isVertical ? `${height}px` : '1px' }}>
-        {isSelected && (
-           <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-blue-600 border border-white cursor-nwse-resize z-50 rounded-sm"
-                onMouseDown={handleMouseDownResize} />
-        )}
-      </div>
-    );
-  }
-
-  if (isPicture) {
-    return (
-      <div onMouseDown={handleMouseDownDrag}
-           className={`absolute border border-blue-300 bg-blue-50/50 flex items-center justify-center overflow-hidden text-[8px] text-blue-500 font-bold cursor-move ${isSelected ? 'ring-2 ring-blue-500 z-40' : ''}`}
-           style={{ top: `${top}px`, left: `${left}px`, width: `${width}px`, height: `${height}px` }}>
-        [IMG: {obj.Name || 'Logo'}]
-        {isSelected && (
-           <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-blue-600 border border-white cursor-nwse-resize z-50 rounded-sm"
-                onMouseDown={handleMouseDownResize} />
-        )}
+      <div onMouseDown={handleMouseDownDrag} className={`absolute border cursor-move ${isSelected ? 'ring-2 ring-blue-500 z-40' : 'border-gray-400 bg-gray-100/30'} z-20`} style={baseStyle}>
+        {obj.TipoObj === "Picture" && <span className="text-[8px] text-blue-500 flex justify-center items-center h-full">[IMG]</span>}
+        {isSelected && <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-blue-600 cursor-nwse-resize z-50 rounded-sm" onMouseDown={handleMouseDownResize} />}
       </div>
     );
   }
 
   return (
     <div 
-      onMouseDown={handleMouseDownDrag}
-      className={`absolute flex items-center px-1 font-mono tracking-tight overflow-hidden cursor-move select-none border transition-colors ${
-        isSelected
-          ? 'ring-2 ring-blue-500 bg-blue-100/80 border-blue-400 z-40 shadow-lg scale-[1.02]' 
-          : isField
-            ? 'bg-blue-50/60 border-blue-200 text-blue-800' 
-            : 'bg-transparent border-transparent text-gray-900 hover:border-gray-300'
-      }`}
-      style={{ top: `${top}px`, left: `${left}px`, width: `${width}px`, height: `${height}px`, fontSize: `${obj.FontSize || 9}pt` }}
+      onMouseDown={handleMouseDownDrag} 
+      className={`absolute flex items-center overflow-hidden whitespace-nowrap font-mono tracking-tight cursor-move select-none border transition-colors ${
+        isSelected 
+          ? 'ring-2 ring-blue-500 bg-blue-100/80 z-40 shadow-lg scale-[1.02]' 
+          : customClass ? customClass : obj.TipoObj === "Field" ? 'bg-blue-50/60 border-blue-200 text-blue-800' : 'bg-transparent border-transparent text-gray-900 hover:border-gray-300'
+      } z-20`} 
+      style={baseStyle}
     >
-      {obj.Expr ? obj.Expr.replace(/['"]/g, '') : <span className="opacity-30">vacío</span>}
-
-      {isSelected && (
-        <div 
-          className="absolute -bottom-1 -right-1 w-3 h-3 bg-blue-600 border border-white cursor-nwse-resize z-50 rounded-sm"
-          onMouseDown={handleMouseDownResize}
-        />
-      )}
+      {obj.Label && <span className="font-bold mr-1">{obj.Label.replace(/['"]/g, '')}</span>}
+      {obj.Expr ? obj.Expr.replace(/^["']|["']$/g, '') : <span className="opacity-30">vacío</span>}
+      {isSelected && <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-blue-600 cursor-nwse-resize z-50 rounded-sm" onMouseDown={handleMouseDownResize} />}
     </div>
   );
 }

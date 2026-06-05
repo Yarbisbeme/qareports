@@ -1,12 +1,12 @@
 export interface IReportObject {
   TipoObj: "Label" | "Field" | "Shape" | "Line" | "Picture";
   Expr: string;
-  Name?: string;     // <--- Nueva propiedad
+  Name?: string;
   VPos: number;
   HPos: number;
   Width?: number;
   Height?: number;
-  FontSize?: number; // <--- Nueva propiedad
+  FontSize?: number;
 }
 
 export interface ReportBand {
@@ -14,32 +14,17 @@ export interface ReportBand {
   Nivel: number;
   AgrupaPor?: string;
   Objetos: IReportObject[];
-}
-
-export interface ReportObjectProps {
-  obj: IReportObject;
-  offsetVPos: number;
-  bandIdx: number; // <--- Nuevo
-  objIdx: number;  // <--- Nuevo
-}
-
-export interface BandRendererProps {
-  band: ReportBand;
-  bandIdx: number; 
+  BandHeight: number;
 }
 
 export interface MetadataItem {
-  Label: string;
+  Label?: string;
   Expr: string;
   VPos: number;
   HPos: number;
-  FontSize?: number; // <--- Agregado
-}
-
-export interface ReportMetadata {
-  Company: MetadataItem;
-  Title: MetadataItem;
-  Subtitle: MetadataItem;
+  Width?: number;  // <--- ¡NUEVO!
+  Height?: number; // <--- ¡NUEVO!
+  FontSize?: number; 
 }
 
 export interface SystemVariable {
@@ -47,7 +32,15 @@ export interface SystemVariable {
   Expr: string;
   VPos: number;
   HPos: number;
+  Width?: number;  // <--- ¡NUEVO!
+  Height?: number; // <--- ¡NUEVO!
   FontSize: number;
+}
+
+export interface ReportMetadata {
+  Company: MetadataItem;
+  Title: MetadataItem;
+  Subtitle: MetadataItem;
 }
 
 export interface FoxProReport {
@@ -58,36 +51,51 @@ export interface FoxProReport {
   Bandas: ReportBand[];
 }
 
+export interface BandRendererProps {
+  band: ReportBand;
+  bandIdx: number; 
+}
+
+// === NUEVA SELECCIÓN UNIVERSAL ===
 export interface SelectionItem {
-  bandIdx: number;
-  objIdx: number;
+  type: 'band' | 'meta' | 'sysvar';
+  bandIdx?: number;
+  objIdx?: number;
+  metaKey?: 'Company' | 'Title' | 'Subtitle';
+  sysIdx?: number;
+}
+
+export interface ReportObjectProps {
+  obj: any; // Acepta IReportObject, MetadataItem o SystemVariable
+  offsetVPos: number;
+  bandIdx?: number; 
+  objIdx?: number;
+  type?: 'band' | 'meta' | 'sysvar';
+  metaKey?: 'Company' | 'Title' | 'Subtitle';
+  sysIdx?: number;
+  customClass?: string;
 }
 
 export interface ReportStore {
   report: FoxProReport | null;
   selectedIndices: SelectionItem[];
-
   past: FoxProReport[];
   future: FoxProReport[];
+  dragSnapshot: (SelectionItem & { hPos: number, vPos: number, width: number, height: number })[];
+  snapLines: { hPos: number | null, vPos: number | null, bandIdx: number | null };
+  scale: number;
+
   saveHistory: (pastReport: FoxProReport) => void;
   undo: () => void;
   redo: () => void;
   deleteSelected: () => void;
-
   nudgeSelected: (deltaX: number, deltaY: number) => void;
-
-  dragSnapshot: { bandIdx: number, objIdx: number, hPos: number, vPos: number, width: number, height: number }[];
-  snapLines: { hPos: number | null, vPos: number | null, bandIdx: number | null };
-  scale: number;
-
   setReport: (data: FoxProReport) => void;
   setSnapLines: (lines: { hPos: number | null, vPos: number | null, bandIdx: number | null }) => void;
   
-  toggleSelection: (bandIdx: number, objIdx: number, multi: boolean) => void;
-  updateSelectedObjects: (updates: Partial<IReportObject>) => void;
-  
+  toggleSelection: (item: SelectionItem, multi: boolean) => void;
+  updateSelectedObjects: (updates: Partial<IReportObject & MetadataItem>) => void;
   captureSnapshot: () => void;
   applySnapshotDelta: (deltaX: number, deltaY: number, isResize?: boolean) => void;
-
   autoScale: (containerWidth: number) => void;
 }

@@ -1,30 +1,41 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { BandRendererProps } from '@/types/report';
 import { fruToPx } from '@/lib/fruConverter';
 import ReportObject from './ReportObject';
 import { useReportStore } from '@/store/useReportStore';
 
 export default function BandRenderer({ band, bandIdx }: BandRendererProps) {
-  // Congelamos el techo de la banda para evitar la "Cinta de Correr"
-  const minVPosRef = useRef<number | null>(null);
-  const snapLines = useReportStore(state => state.snapLines);
+  const report = useReportStore((state) => state.report);
+
   if (!band.Objetos || band.Objetos.length === 0) return null;
 
-  if (minVPosRef.current === null) {
-    minVPosRef.current = band.TipoBanda === 'PageHeader' 
-      ? 0 
-      : Math.min(...band.Objetos.map(o => o.VPos || 0));
+  // 1. Calculamos el inicio EXACTO de esta banda
+  const minVPos = band.TipoBanda === 'PageHeader' 
+    ? 0 
+    : Math.min(...band.Objetos.map(o => o.VPos || 0));
+
+  let nextMinVPos = minVPos;
+  if (report && bandIdx < report.Bandas.length - 1) {
+    for (let i = bandIdx + 1; i < report.Bandas.length; i++) {
+      const nextBand = report.Bandas[i];
+      if (nextBand.Objetos && nextBand.Objetos.length > 0) {
+        nextMinVPos = Math.min(...nextBand.Objetos.map(o => o.VPos || 0));
+        break;
+      }
+    }
   }
 
-  const minVPos = minVPosRef.current;
-  const validObjects = band.Objetos.filter(o => (o.VPos - minVPos) < 20000);
+  // 3. Calculamos la altura real (Distancia a la próxima banda)
+  let bandHeightFru = 0;
+  if (report && bandIdx < report.Bandas.length - 1 && nextMinVPos > minVPos) {
+    bandHeightFru = nextMinVPos - minVPos;
+  } else {
+    // Si es la última banda (PageFooter), su altura llega hasta su objeto más bajo
+    const maxBottom = Math.max(...band.Objetos.map(o => (o.VPos || 0) + (o.Height || 0)));
+    bandHeightFru = maxBottom - minVPos;
+  }
 
-  const maxHeight = validObjects.reduce((max, obj) => {
-    const relativeBottom = (obj.VPos - minVPos) + (obj.Height || 0);
-    return relativeBottom > max ? relativeBottom : max;
-  }, 0);
-
-  const bandHeight = Math.max(fruToPx(maxHeight) + 10, 30);
+  const bandHeight = Math.max(fruToPx(bandHeightFru), 30); // Le damos mínimo 30px visuales
 
   const bgColors: Record<string, string> = {
     PageHeader: '#f8fafc',
@@ -39,24 +50,19 @@ export default function BandRenderer({ band, bandIdx }: BandRendererProps) {
       className="relative w-full border-b border-dashed border-gray-300 overflow-visible"
       style={{ height: `${bandHeight}px`, backgroundColor: bgColors[band.TipoBanda] || '#fff' }}
     >
-      <span className="absolute top-1 right-2 text-[9px] text-gray-400 font-mono select-none z-0">
+      {/* Etiqueta de la Banda */}
+      <span className="absolute top-1 right-2 text-[9px] text-gray-400 font-mono select-none z-0 pointer-events-none">
         {band.TipoBanda} {band.AgrupaPor ? `(${band.AgrupaPor})` : ''} N{band.Nivel}
       </span>
 
-      {snapLines.vPos !== null && snapLines.bandIdx === bandIdx && (
-        <div 
-          className="absolute left-0 right-0 h-[1px] bg-red-500 z-50 pointer-events-none"
-          style={{ top: `${fruToPx(snapLines.vPos) - fruToPx(minVPos)}px` }} 
-        />
-      )}
-
-      {validObjects.map((obj, idx) => (
+      {/* Renderizado de Objetos */}
+      {band.Objetos.map((obj, originalIdx) => (
         <ReportObject 
-          key={idx} 
+          key={originalIdx} 
           obj={obj} 
           offsetVPos={minVPos} 
           bandIdx={bandIdx} 
-          objIdx={idx}      
+          objIdx={originalIdx} 
         />
       ))}
     </div>
