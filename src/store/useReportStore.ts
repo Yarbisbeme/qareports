@@ -20,16 +20,83 @@ export const useReportStore = create<ReportStore>((set) => ({
 
   setSnapLines: (lines) => set({ snapLines: lines }),
   
+  // En src/store/useReportStore.ts, busca tu setReport y cámbialo por esto:
+
   setReport: (data) => {
-    console.log("JSON CRUDO RECIBIDO:", data.Metadata);
+    console.log("JSON CRUDO RECIBIDO:", data);
+
+    // =========================================================
+    // 🧹 MÓDULO DE SANITIZACIÓN AUTOMÁTICA (ETL)
+    // =========================================================
+    // Clonamos los datos para no mutar el JSON original directo
+    const cleanData = JSON.parse(JSON.stringify(data)) as FoxProReport;
+
+    if (cleanData.Bandas && cleanData.Bandas.length > 0) {
+      // 1. Extraer TODOS los objetos a una piscina global
+      const allObjects: any[] = [];
+      cleanData.Bandas.forEach((band) => {
+        if (band.Objetos) {
+          allObjects.push(...band.Objetos);
+        }
+        band.Objetos = []; // Vaciamos las bandas para rellenarlas limpiamente
+      });
+
+      // 2. Calcular las "fronteras" (Start y End) físicas de cada banda
+      let currentTop = 0;
+      const bandBoundaries = cleanData.Bandas.map((band, idx) => {
+        // ¿Dónde empieza lógicamente esta banda según sus objetos originales?
+        // Miramos el JSON crudo original para saber la intención de FoxPro
+        const originalObjs = data.Bandas[idx].Objetos || [];
+        const minVPos = originalObjs.length > 0 
+          ? Math.min(...originalObjs.map(o => o.VPos || 0)) 
+          : currentTop;
+
+        const startVPos = band.TipoBanda === 'PageHeader' ? 0 : Math.max(currentTop, minVPos);
+        currentTop = startVPos;
+
+        return {
+          idx,
+          tipo: band.TipoBanda,
+          start: startVPos,
+          end: 9999999 // Por defecto infinito, lo ajustamos en el paso 3
+        };
+      });
+
+      // 3. Ajustar el 'end' de cada banda usando el 'start' de la siguiente
+      for (let i = 0; i < bandBoundaries.length; i++) {
+        if (i < bandBoundaries.length - 1) {
+          bandBoundaries[i].end = bandBoundaries[i + 1].start;
+        }
+      }
+
+      // 4. Reasignar cada objeto a su banda CORRECTA según su VPos
+      allObjects.forEach((obj) => {
+        let targetIdx = bandBoundaries.findIndex(b => obj.VPos >= b.start && obj.VPos < b.end);
+        
+        // Si por alguna razón el VPos es inmenso, lo mandamos a la última banda (Footer)
+        if (targetIdx === -1) targetIdx = bandBoundaries.length - 1;
+        
+        cleanData.Bandas[targetIdx].Objetos.push(obj);
+      });
+
+      // 5. Ordenar los objetos de arriba hacia abajo para un renderizado limpio
+      cleanData.Bandas.forEach(band => {
+        band.Objetos.sort((a, b) => (a.VPos || 0) - (b.VPos || 0));
+      });
+
+      console.log("JSON SANITIZADO Y ESTRUCTURADO:", cleanData);
+    }
+    // =========================================================
+
     set({ 
-    report: data, 
-    selectedIndices: [], 
-    dragSnapshot: [], 
-    past: [], 
-    future: [], 
-    scale: 1 
-  })
+      report: cleanData, // Pasamos la data limpia al lienzo
+      selectedIndices: [], 
+      dragSnapshot: [], 
+      past: [], 
+      future: [], 
+      scale: 1,
+      snapLines: { hPos: null, vPos: null, bandIdx: null }
+    });
   },
   
   saveHistory: (pastReport) => set((state) => ({ past: [...state.past, pastReport], future: [] })),
