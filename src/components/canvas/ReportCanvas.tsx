@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useReportStore } from '@/store/useReportStore';
 import { fruToPx } from '@/lib/fruConverter';
 import BandRenderer from './BandRenderer';
@@ -7,6 +7,30 @@ export default function ReportCanvas() {
   const report = useReportStore((state) => state.report);
   const scale = useReportStore((state) => state.scale);
   const snapLines = useReportStore((state) => state.snapLines);
+
+  const deleteSelected = useReportStore((state) => state.deleteSelected);
+  const undo = useReportStore((state) => state.undo);
+  const redo = useReportStore((state) => state.redo);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (document.activeElement?.tagName === 'INPUT') return;
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        deleteSelected();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault(); // Prevenir deshacer del navegador
+        if (e.shiftKey) redo();
+        else undo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [deleteSelected, undo, redo]);
 
   if (!report) {
     return (

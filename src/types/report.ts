@@ -67,6 +67,13 @@ export interface ReportStore {
   report: FoxProReport | null;
   selectedIndices: SelectionItem[];
   
+  past: FoxProReport[];
+  future: FoxProReport[];
+  saveHistory: (pastReport: FoxProReport) => void;
+  undo: () => void;
+  redo: () => void;
+  deleteSelected: () => void;
+
   dragSnapshot: { bandIdx: number, objIdx: number, hPos: number, vPos: number, width: number, height: number }[];
   snapLines: { hPos: number | null, vPos: number | null, bandIdx: number | null };
   scale: number;

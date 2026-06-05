@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { ReportObjectProps } from '@/types/report';
+import { FoxProReport, ReportObjectProps } from '@/types/report';
 import { fruToPx, pxToFru } from '@/lib/fruConverter'; 
 import { useReportStore } from '@/store/useReportStore';
 
@@ -19,12 +19,14 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx }: Repor
   const startMouse = useRef({ x: 0, y: 0 });
   const startMetrics = useRef({ hPos: 0, vPos: 0, width: 0, height: 0 });
 
+  const saveHistory = useReportStore((state) => state.saveHistory);
+  const reportBeforeDrag = useRef<FoxProReport | null>(null);
+
   const handleMouseDownDrag = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isSelected || e.ctrlKey || e.shiftKey) {
-      toggleSelection(bandIdx, objIdx, e.ctrlKey || e.shiftKey);
-    }
+    if (!isSelected || e.ctrlKey || e.shiftKey) toggleSelection(bandIdx, objIdx, e.ctrlKey || e.shiftKey);
     captureSnapshot();
+    reportBeforeDrag.current = useReportStore.getState().report;
     startMouse.current = { x: e.clientX, y: e.clientY };
     startMetrics.current = { hPos: obj.HPos, vPos: obj.VPos, width: obj.Width || 0, height: obj.Height || 0 };
     setIsDragging(true);
@@ -34,6 +36,7 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx }: Repor
     e.stopPropagation();
     if (!isSelected || e.ctrlKey || e.shiftKey) toggleSelection(bandIdx, objIdx, e.ctrlKey || e.shiftKey);
     captureSnapshot();
+    reportBeforeDrag.current = useReportStore.getState().report;
     startMouse.current = { x: e.clientX, y: e.clientY };
     startMetrics.current = { hPos: obj.HPos, vPos: obj.VPos, width: obj.Width || 0, height: obj.Height || 0 };
     setIsResizing(true);
@@ -168,6 +171,19 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx }: Repor
     };
 
     const handleMouseUp = () => {
+      if (isDragging || isResizing) {
+        const store = useReportStore.getState();
+        const objNow = store.report?.Bandas[bandIdx].Objetos[objIdx];
+        if (objNow) {
+          const moved = objNow.HPos !== startMetrics.current.hPos || objNow.VPos !== startMetrics.current.vPos;
+          const resized = objNow.Width !== startMetrics.current.width || objNow.Height !== startMetrics.current.height;
+
+          if ((moved || resized) && reportBeforeDrag.current) {
+            saveHistory(reportBeforeDrag.current);
+          }
+        }
+      }
+
       setIsDragging(false);
       setIsResizing(false);
       setSnapLines({ hPos: null, vPos: null, bandIdx: null });

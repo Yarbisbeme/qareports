@@ -3,14 +3,82 @@ import { ReportStore } from '@/types/report';
 
 export const useReportStore = create<ReportStore>((set) => ({
   report: null,
-  selectedIndices: [], // <-- Arreglo vacío por defecto
+  selectedIndices: [],
   dragSnapshot: [],
   snapLines: { hPos: null, vPos: null, bandIdx: null },
   scale: 1,
   
+  past: [],
+  future: [],
+
   setSnapLines: (lines) => set({ snapLines: lines }),
-  setReport: (data) => set({ report: data, selectedIndices: [], dragSnapshot: [], scale: 1 }),
   
+  // Al cargar un nuevo archivo, limpiamos la historia
+  setReport: (data) => set({ report: data, selectedIndices: [], dragSnapshot: [], past: [], future: [], scale: 1 }),
+  
+  // === MÁQUINA DEL TIEMPO ===
+  saveHistory: (pastReport) => set((state) => ({
+    past: [...state.past, pastReport],
+    future: [] // Si hacemos algo nuevo, perdemos el futuro
+  })),
+
+  undo: () => set((state) => {
+    if (state.past.length === 0 || !state.report) return state;
+    const previous = state.past[state.past.length - 1];
+    return {
+      past: state.past.slice(0, -1),
+      future: [state.report, ...state.future],
+      report: previous,
+      selectedIndices: [], // Limpiamos selección para evitar errores de índice
+      selectedObj: null
+    };
+  }),
+
+  redo: () => set((state) => {
+    if (state.future.length === 0 || !state.report) return state;
+    const next = state.future[0];
+    return {
+      past: [...state.past, state.report],
+      future: state.future.slice(1),
+      report: next,
+      selectedIndices: [],
+      selectedObj: null
+    };
+  }),
+
+  deleteSelected: () => set((state) => {
+    if (!state.report || state.selectedIndices.length === 0) return state;
+
+    const newReport = { ...state.report };
+    const newBandas = [...newReport.Bandas];
+
+    // Agrupamos los índices a borrar por banda
+    const toRemoveByBand: Record<number, Set<number>> = {};
+    state.selectedIndices.forEach(({ bandIdx, objIdx }) => {
+      if (!toRemoveByBand[bandIdx]) toRemoveByBand[bandIdx] = new Set();
+      toRemoveByBand[bandIdx].add(objIdx);
+    });
+
+    // Filtramos los objetos que NO están en la lista de borrado
+    Object.keys(toRemoveByBand).forEach((bIdxStr) => {
+      const bIdx = parseInt(bIdxStr, 10);
+      newBandas[bIdx] = {
+        ...newBandas[bIdx],
+        Objetos: newBandas[bIdx].Objetos.filter((_, oIdx) => !toRemoveByBand[bIdx].has(oIdx))
+      };
+    });
+
+    newReport.Bandas = newBandas;
+
+    return {
+      past: [...state.past, state.report], // Guardamos historia antes de borrar
+      future: [],
+      report: newReport,
+      selectedIndices: [],
+      selectedObj: null
+    };
+  }),
+
   toggleSelection: (bandIdx, objIdx, multi) => set((state) => {
     const exists = state.selectedIndices.find(i => i.bandIdx === bandIdx && i.objIdx === objIdx);
     if (multi) {
@@ -18,11 +86,9 @@ export const useReportStore = create<ReportStore>((set) => ({
         ? { selectedIndices: state.selectedIndices.filter(i => !(i.bandIdx === bandIdx && i.objIdx === objIdx)) }
         : { selectedIndices: [...state.selectedIndices, { bandIdx, objIdx }] };
     }
-    // Si no presionas Ctrl, selecciona solo este (a menos que ya esté en el grupo, para poder arrastrarlos juntos)
     return exists ? state : { selectedIndices: [{ bandIdx, objIdx }] };
   }),
 
-  // Actualiza desde el panel de propiedades
   updateSelectedObjects: (updates) => set((state) => {
     if (!state.report || state.selectedIndices.length === 0) return state;
     const newReport = { ...state.report };
@@ -35,10 +101,13 @@ export const useReportStore = create<ReportStore>((set) => ({
     });
 
     newReport.Bandas = newBandas;
-    return { report: newReport };
+    return { 
+      past: [...state.past, state.report], // Guardamos historia al editar en el panel
+      future: [],
+      report: newReport 
+    };
   }),
 
-  // 1. TOMA LA FOTO
   captureSnapshot: () => set((state) => {
     if (!state.report) return state;
     const snapshot = state.selectedIndices.map(sel => {
@@ -48,7 +117,6 @@ export const useReportStore = create<ReportStore>((set) => ({
     return { dragSnapshot: snapshot };
   }),
 
-  // 2. MUEVE EL GRUPO BASADO EN LA FOTO
   applySnapshotDelta: (deltaX, deltaY, isResize = false) => set((state) => {
     if (!state.report || state.dragSnapshot.length === 0) return state;
     const newReport = { ...state.report };
