@@ -192,22 +192,50 @@ export const useReportStore = create<ReportStore>((set) => ({
       if (snap.type === 'band') {
         const newObjetos = [...newBandas[snap.bandIdx!].Objetos];
         const obj = { ...newObjetos[snap.objIdx!] };
-        if (isResize) { obj.Width = Math.max(10, snap.width + deltaX); obj.Height = Math.max(10, snap.height + deltaY); } 
-        else { obj.HPos = snap.hPos + deltaX; obj.VPos = snap.vPos + deltaY; }
+        
+        if (isResize) { 
+          obj.Width = Math.max(10, snap.width + deltaX); 
+          obj.Height = Math.max(10, snap.height + deltaY); 
+        } else { 
+          obj.HPos = snap.hPos + deltaX; 
+          obj.VPos = snap.vPos + deltaY; 
+        }
+        
         newObjetos[snap.objIdx!] = obj;
         newBandas[snap.bandIdx!] = { ...newBandas[snap.bandIdx!], Objetos: newObjetos };
       } 
       else if (snap.type === 'meta') {
         const obj = { ...newReport.Metadata[snap.metaKey!] };
-        obj.HPos = snap.hPos + deltaX; obj.VPos = snap.vPos + deltaY;
+        
+        // === LÓGICA DE RESIZE AÑADIDA PARA METADATA ===
+        if (isResize) {
+          obj.Width = Math.max(10, snap.width + deltaX);
+          obj.Height = Math.max(10, snap.height + deltaY);
+        } else {
+          obj.HPos = snap.hPos + deltaX; 
+          obj.VPos = snap.vPos + deltaY;
+        }
+        
         newReport.Metadata[snap.metaKey!] = obj;
       }
       else if (snap.type === 'sysvar') {
         const sysVars = [...newReport.VariablesSistema];
-        sysVars[snap.sysIdx!] = { ...sysVars[snap.sysIdx!], HPos: snap.hPos + deltaX, VPos: snap.vPos + deltaY };
+        const obj = { ...sysVars[snap.sysIdx!] };
+        
+        // === LÓGICA DE RESIZE AÑADIDA PARA VARIABLES DE SISTEMA ===
+        if (isResize) {
+          obj.Width = Math.max(10, snap.width + deltaX);
+          obj.Height = Math.max(10, snap.height + deltaY);
+        } else {
+          obj.HPos = snap.hPos + deltaX; 
+          obj.VPos = snap.vPos + deltaY;
+        }
+        
+        sysVars[snap.sysIdx!] = obj;
         newReport.VariablesSistema = sysVars;
       }
     });
+    
     newReport.Bandas = newBandas;
     return { report: newReport };
   }),

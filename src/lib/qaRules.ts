@@ -44,7 +44,6 @@ export function runQaLinter(report: FoxProReport | null): QaWarning[] {
           severidad: 'error',
           mensaje: `El objeto "${label}" tiene ancho o alto igual a 0 (invisible).`,
           objeto: obj.Expr,
-          // === AQUÍ ENVIAMOS EL OBJETO A SELECCIONAR ===
           relatedItems: [{ type: 'band', bandIdx, objIdx }] 
         });
       }
@@ -57,15 +56,21 @@ export function runQaLinter(report: FoxProReport | null): QaWarning[] {
           severidad: 'warning',
           mensaje: `"${label}" se sale del margen derecho (Hoja ${isLandscape ? 'Horizontal' : 'Vertical'}).`,
           objeto: obj.Expr,
-          // === AQUÍ ENVIAMOS EL OBJETO A SELECCIONAR ===
           relatedItems: [{ type: 'band', bandIdx, objIdx }]
         });
       }
       
+      // Regla 4: Colisiones (Ignorando elementos de diseño)
       for (let i = objIdx + 1; i < objetos.length; i++) {
         const otro = objetos[i];
         
-        if (obj.TipoObj === 'Shape' || otro.TipoObj === 'Shape') continue;
+        // --- MEJORA: Definimos qué tipos son considerados "decorativos" ---
+        const tiposDecorativos = ['Shape', 'Line', 'Picture'];
+        
+        // Si cualquiera de los dos objetos es decorativo, saltamos la validación de colisión
+        if (tiposDecorativos.includes(obj.TipoObj) || tiposDecorativos.includes(otro.TipoObj)) {
+          continue;
+        }
 
         const colisionH = obj.HPos < (otro.HPos + (otro.Width || 0)) && (obj.HPos + (obj.Width || 0)) > otro.HPos;
         const colisionV = obj.VPos < (otro.VPos + (otro.Height || 0)) && (obj.VPos + (obj.Height || 0)) > otro.VPos;
@@ -78,8 +83,8 @@ export function runQaLinter(report: FoxProReport | null): QaWarning[] {
             mensaje: `Colisión detectada: "${label}" se encima con "${otro.Expr.replace(/['"]/g, '')}".`,
             objeto: obj.Expr,
             relatedItems: [
-              { type: 'band', bandIdx, objIdx },     // El primer objeto
-              { type: 'band', bandIdx, objIdx: i }   // El objeto con el que chocó
+              { type: 'band', bandIdx, objIdx },
+              { type: 'band', bandIdx, objIdx: i }
             ]
           });
         }
