@@ -45,6 +45,7 @@ export const useReportStore = create<ReportStore>((set) => ({
       selectedObj: null
     };
   }),
+  
 
   deleteSelected: () => set((state) => {
     if (!state.report || state.selectedIndices.length === 0) return state;
@@ -147,4 +148,28 @@ export const useReportStore = create<ReportStore>((set) => ({
     const newScale = Math.min(containerWidth / targetWidth, 1);
     set({ scale: newScale });
   },
+
+  nudgeSelected: (deltaX, deltaY) => set((state) => {
+    if (!state.report || state.selectedIndices.length === 0) return state;
+    
+    const newReport = { ...state.report };
+    const newBandas = [...newReport.Bandas];
+    
+    state.selectedIndices.forEach(({ bandIdx, objIdx }) => {
+      const newObjetos = [...newBandas[bandIdx].Objetos];
+      const obj = newObjetos[objIdx];
+      
+      newObjetos[objIdx] = { ...obj, HPos: obj.HPos + deltaX, VPos: obj.VPos + deltaY };
+      newBandas[bandIdx] = { ...newBandas[bandIdx], Objetos: newObjetos };
+    });
+
+    newReport.Bandas = newBandas;
+
+    return { 
+      past: [...state.past, state.report], // Guardamos historia para el Ctrl+Z
+      future: [], 
+      report: newReport 
+    };
+  }),
+  
 }));

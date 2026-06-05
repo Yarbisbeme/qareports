@@ -11,10 +11,13 @@ export default function ReportCanvas() {
   const deleteSelected = useReportStore((state) => state.deleteSelected);
   const undo = useReportStore((state) => state.undo);
   const redo = useReportStore((state) => state.redo);
+  const nudgeSelected = useReportStore((state) => state.nudgeSelected);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (document.activeElement?.tagName === 'INPUT') return;
+
+      const NUDGE_STEP = e.shiftKey ? 1000 : 100;
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
         deleteSelected();
@@ -25,6 +28,19 @@ export default function ReportCanvas() {
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
         e.preventDefault();
         redo();
+      }
+      else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        nudgeSelected(0, -NUDGE_STEP);
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        nudgeSelected(0, NUDGE_STEP);
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        nudgeSelected(-NUDGE_STEP, 0);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        nudgeSelected(NUDGE_STEP, 0);
       }
     };
 
