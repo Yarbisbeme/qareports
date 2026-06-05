@@ -22,6 +22,7 @@ export default function ReportCanvas() {
   const [selectionBox, setSelectionBox] = useState<{startX: number, startY: number, currentX: number, currentY: number} | null>(null);
 
   useEffect(() => {
+    
     const handleKeyDown = (e: KeyboardEvent) => {
       if (document.activeElement?.tagName === 'INPUT') return;
       const NUDGE_STEP = e.shiftKey ? 1000 : 100;
@@ -39,6 +40,10 @@ export default function ReportCanvas() {
       else if (e.key === 'ArrowDown') { e.preventDefault(); nudgeSelected(0, NUDGE_STEP); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); nudgeSelected(-NUDGE_STEP, 0); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); nudgeSelected(NUDGE_STEP, 0); }
+      else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        console.log("Guardando...");
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
