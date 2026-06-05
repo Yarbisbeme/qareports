@@ -5,6 +5,7 @@ import { runQaLinter, QaWarning } from '@/lib/qaRules';
 
 export default function QaLinterPanel() {
   const report = useReportStore((state) => state.report);
+  const setSelections = useReportStore((state) => state.setSelections); // <-- AÑADIDO
   const warnings = runQaLinter(report);
 
   if (!report) {
@@ -42,10 +43,16 @@ export default function QaLinterPanel() {
         {warnings.map((warn) => (
           <div 
             key={warn.id}
-            className={`p-3 rounded-lg border text-xs shadow-sm transition-all hover:scale-[1.01] ${
+            // === LÓGICA DE CLIC AÑADIDA AQUÍ ===
+            onClick={() => {
+              if (warn.relatedItems && warn.relatedItems.length > 0) {
+                setSelections(warn.relatedItems);
+              }
+            }}
+            className={`p-3 rounded-lg border text-xs shadow-sm transition-all hover:scale-[1.02] cursor-pointer ${
               warn.severidad === 'error' 
-                ? 'bg-red-50/70 border-red-200 text-red-900' 
-                : 'bg-amber-50/70 border-amber-200 text-amber-900'
+                ? 'bg-red-50/70 border-red-200 text-red-900 hover:bg-red-100' 
+                : 'bg-amber-50/70 border-amber-200 text-amber-900 hover:bg-amber-100'
             }`}
           >
             <div className="flex justify-between font-semibold text-[10px] uppercase tracking-wide opacity-75 mb-1">

@@ -22,7 +22,6 @@ export default function ReportCanvas() {
   const [selectionBox, setSelectionBox] = useState<{startX: number, startY: number, currentX: number, currentY: number} | null>(null);
 
   useEffect(() => {
-    
     const handleKeyDown = (e: KeyboardEvent) => {
       if (document.activeElement?.tagName === 'INPUT') return;
       const NUDGE_STEP = e.shiftKey ? 1000 : 100;
@@ -58,19 +57,15 @@ export default function ReportCanvas() {
     );
   }
 
-  // === LÓGICA DE DIBUJO Y COLISIÓN DE LA CAJA ===
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Solo clic izquierdo
     if (e.button !== 0) return;
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
 
-    // Calcular posición X/Y exacta teniendo en cuenta el Zoom (Scale)
     const x = (e.clientX - rect.left) / scale;
     const y = (e.clientY - rect.top) / scale;
     setSelectionBox({ startX: x, startY: y, currentX: x, currentY: y });
 
-    // Si no mantenemos SHIFT, limpiamos la selección anterior
     if (!e.shiftKey) setSelections([]);
   };
 
@@ -79,7 +74,6 @@ export default function ReportCanvas() {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
 
-    // Actualizamos el extremo final de la caja, limitándolo a los bordes de la hoja
     const x = Math.max(0, Math.min((e.clientX - rect.left) / scale, rect.width / scale));
     const y = Math.max(0, Math.min((e.clientY - rect.top) / scale, rect.height / scale));
     setSelectionBox(prev => prev ? { ...prev, currentX: x, currentY: y } : null);
@@ -88,47 +82,102 @@ export default function ReportCanvas() {
   const handleMouseUp = (e: React.MouseEvent) => {
     if (!selectionBox) return;
 
-    // 1. Calculamos los bordes finales de la caja en píxeles (Top/Left/Right/Bottom)
     const left = Math.min(selectionBox.startX, selectionBox.currentX);
     const right = Math.max(selectionBox.startX, selectionBox.currentX);
     const top = Math.min(selectionBox.startY, selectionBox.currentY);
     const bottom = Math.max(selectionBox.startY, selectionBox.currentY);
 
-    // 2. Convertimos la caja a escala FRU (FoxPro) para la colisión matemática
     const boxFru = {
       left: pxToFru(left), right: pxToFru(right), top: pxToFru(top), bottom: pxToFru(bottom)
     };
 
-    const isIntersecting = (obj: { HPos: number; VPos: number; Width?: number; Height?: number } | undefined) => {
+    // =========================================================================
+    // 1. REPRODUCIR CÁLCULO VISUAL (Saber dónde está cada banda en la pantalla)
+    // =========================================================================
+    const bandVisualTops: number[] = [];
+    const bandMinVPos: number[] = [];
+    let currentTopFru = 0;
+
+    report.Bandas.forEach((band, bandIdx) => {
+      bandVisualTops.push(currentTopFru);
+      
+      // Encontrar el Offset interno de la banda
+      const minVPos = band.TipoBanda === 'PageHeader' || !band.Objetos || band.Objetos.length === 0
+        ? 0 
+        : Math.min(...band.Objetos.map(o => o.VPos || 0));
+      bandMinVPos.push(minVPos);
+
+      // Calcular altura tal como lo hace BandRenderer
+      let calculatedHeightFru = 0;
+      let nextMinVPos = minVPos;
+
+      if (bandIdx < report.Bandas.length - 1) {
+        for (let i = bandIdx + 1; i < report.Bandas.length; i++) {
+          const nextBand = report.Bandas[i];
+          if (nextBand.Objetos && nextBand.Objetos.length > 0) {
+            nextMinVPos = Math.min(...nextBand.Objetos.map(o => o.VPos || 0));
+            break;
+          }
+        }
+      }
+
+      if (bandIdx < report.Bandas.length - 1 && nextMinVPos > minVPos) {
+        calculatedHeightFru = nextMinVPos - minVPos;
+      } else {
+        const maxBottom = band.Objetos && band.Objetos.length > 0 
+          ? Math.max(...band.Objetos.map(o => (o.VPos || 0) + (o.Height || 0)))
+          : minVPos + 5000;
+        calculatedHeightFru = maxBottom - minVPos;
+      }
+
+      const activeHeightFru = band.BandHeight !== undefined ? band.BandHeight : calculatedHeightFru;
+      currentTopFru += activeHeightFru; // Acumular para la próxima banda
+    });
+
+    // =========================================================================
+    // 2. LÓGICA DE COLISIÓN USANDO COORDENADAS VISUALES
+    // =========================================================================
+    const isIntersecting = (obj: any, bIdx?: number) => {
       if (!obj || obj.HPos === undefined || obj.VPos === undefined) return false;
+      
+      // A) Ajuste en Y: Si pertenece a una banda, usamos su posición real en pantalla
+      let visualTop = obj.VPos;
+      if (bIdx !== undefined) {
+        visualTop = bandVisualTops[bIdx] + (obj.VPos - bandMinVPos[bIdx]);
+      }
+      
+      // B) Ajuste en X: Mejoramos el fallback de Ancho para que no seleccione fantasmas
+      const estimatedWidth = obj.Expr ? obj.Expr.length * 100 : 2000; 
+
       const oLeft = obj.HPos;
-      const oRight = obj.HPos + (obj.Width || 2000); // Fallback si no tiene width
-      const oTop = obj.VPos;
-      const oBottom = obj.VPos + (obj.Height || 1000); // Fallback si no tiene height
+      const oRight = obj.HPos + (obj.Width || estimatedWidth); 
+      const oTop = visualTop;
+      const oBottom = visualTop + (obj.Height || 1000); 
 
       return oLeft < boxFru.right && oRight > boxFru.left && oTop < boxFru.bottom && oBottom > boxFru.top;
     };
 
     const newSelections: SelectionItem[] = [];
 
-    // 3. Revisamos qué objetos chocaron con nuestra caja
+    // 3. Revisamos qué objetos chocaron
     report.Bandas.forEach((band, bIdx) => {
       band.Objetos.forEach((obj, oIdx) => {
-        if (isIntersecting(obj)) newSelections.push({ type: 'band', bandIdx: bIdx, objIdx: oIdx });
+        if (isIntersecting(obj, bIdx)) newSelections.push({ type: 'band', bandIdx: bIdx, objIdx: oIdx });
       });
     });
+
     ['Company', 'Title', 'Subtitle'].forEach(k => {
       const m = report.Metadata[k as 'Company'|'Title'|'Subtitle'];
       if (m && m.VPos >= 0 && isIntersecting(m)) newSelections.push({ type: 'meta', metaKey: k as any });
     });
+
     report.VariablesSistema.forEach((sv, sIdx) => {
       if (isIntersecting(sv)) newSelections.push({ type: 'sysvar', sysIdx: sIdx });
     });
 
-    // 4. Agregamos a la selección (o unimos si presionamos Shift)
+    // 4. Guardar selecciones
     const finalSelections = e.shiftKey ? [...selectedIndices, ...newSelections] : newSelections;
 
-    // Filtramos duplicados por si acaso
     const uniqueSelections = finalSelections.filter((sel, index, self) => 
       index === self.findIndex((t) => (t.type === sel.type && t.bandIdx === sel.bandIdx && t.objIdx === sel.objIdx && t.metaKey === sel.metaKey && t.sysIdx === sel.sysIdx))
     );
@@ -149,7 +198,7 @@ export default function ReportCanvas() {
   return (
     <div 
       className="flex-1 overflow-auto bg-gray-300 p-10 flex justify-center"
-      onMouseUp={handleMouseUp} // Por si soltamos el clic fuera del papel
+      onMouseUp={handleMouseUp} 
       onMouseLeave={handleMouseUp}
     >
       <div 
@@ -160,7 +209,6 @@ export default function ReportCanvas() {
         style={{ width: paperWidth, minHeight: paperMinHeight, height: 'auto', transform: `scale(${scale})` }}
       >
         
-        {/* === RENDER DE LA CAJA AZUL (MARQUEE) === */}
         {selectionBox && (
           <div 
             className="absolute border border-blue-500 bg-blue-500/20 z-50 pointer-events-none"
@@ -173,11 +221,9 @@ export default function ReportCanvas() {
           />
         )}
 
-        {/* LÍNEAS GUÍA MAGNÉTICAS */}
         {snapLines.hPos !== null && <div className="absolute top-0 bottom-0 w-[1px] bg-red-500 z-50 pointer-events-none" style={{ left: `${fruToPx(snapLines.hPos)}px` }} />}
         {snapLines.vPos !== null && <div className="absolute left-0 right-0 h-[1px] bg-red-500 z-50 pointer-events-none" style={{ top: `${fruToPx(snapLines.vPos)}px` }} />}
 
-        {/* METADATA GLOBAL */}
         {report.Metadata && (
           <>
             {report.Metadata.Company?.Expr && report.Metadata.Company.VPos >= 0 && (
@@ -192,14 +238,12 @@ export default function ReportCanvas() {
           </>
         )}
 
-        {/* BANDAS */}
         <div className="w-full relative z-0">
           {(report.Bandas || []).map((band, idx) => (
             <BandRenderer key={`band-${band.TipoBanda}-${band.Nivel}-${band.AgrupaPor || 'none'}-${idx}`} band={band} bandIdx={idx} />
           ))}
         </div>
 
-        {/* VARIABLES DE SISTEMA */}
         {(report.VariablesSistema || []).map((sysVar, idx) => (
           <ReportObject key={`sys-${idx}`} obj={sysVar} offsetVPos={0} type="sysvar" sysIdx={idx} customClass="bg-green-50/80 border-green-300 text-green-800" />
         ))}

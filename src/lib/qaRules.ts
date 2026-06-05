@@ -1,13 +1,4 @@
-// src/lib/qaRules.ts
-import { FoxProReport, ReportBand, IReportObject } from '@/types/report';
-
-export interface QaWarning {
-  id: string;
-  banda?: string;
-  severidad: 'error' | 'warning' | 'info';
-  mensaje: string;
-  objeto?: string;
-}
+import { FoxProReport, QaWarning, SelectionItem } from '@/types/report';
 
 export function runQaLinter(report: FoxProReport | null): QaWarning[] {
   if (!report) return [];
@@ -20,7 +11,7 @@ export function runQaLinter(report: FoxProReport | null): QaWarning[] {
   const isLandscape = maxFruX > 85000;
   const limiteDerecho = isLandscape ? 105000 : 80000;
 
-  // Agrega esto a tu qaRules.ts para verificar si un Reporte no tiene Detail
+  // Regla 0: Verificar si un Reporte no tiene Detail
   const tieneDetail = report.Bandas?.some(b => b.TipoBanda === 'Detail');
   if (!tieneDetail) {
     warnings.push({
@@ -39,7 +30,6 @@ export function runQaLinter(report: FoxProReport | null): QaWarning[] {
     });
   }
 
-  // Analizar cada banda por separado
   report.Bandas?.forEach((banda, bandIdx) => {
     const objetos = banda.Objetos || [];
 
@@ -54,10 +44,12 @@ export function runQaLinter(report: FoxProReport | null): QaWarning[] {
           severidad: 'error',
           mensaje: `El objeto "${label}" tiene ancho o alto igual a 0 (invisible).`,
           objeto: obj.Expr,
+          // === AQUÍ ENVIAMOS EL OBJETO A SELECCIONAR ===
+          relatedItems: [{ type: 'band', bandIdx, objIdx }] 
         });
       }
 
-      // Regla 3: Desborde horizontal (Límite típico de página de ~80,000 FRUs)
+      // Regla 3: Desborde horizontal
       if ((obj.HPos + (obj.Width || 0)) > limiteDerecho) {
         warnings.push({
           id: `overflow-${bandIdx}-${objIdx}`,
@@ -65,14 +57,14 @@ export function runQaLinter(report: FoxProReport | null): QaWarning[] {
           severidad: 'warning',
           mensaje: `"${label}" se sale del margen derecho (Hoja ${isLandscape ? 'Horizontal' : 'Vertical'}).`,
           objeto: obj.Expr,
+          // === AQUÍ ENVIAMOS EL OBJETO A SELECCIONAR ===
+          relatedItems: [{ type: 'band', bandIdx, objIdx }]
         });
       }
       
-      // Regla 4: Buscar Colisiones (Objetos encimados en la misma área)
       for (let i = objIdx + 1; i < objetos.length; i++) {
         const otro = objetos[i];
         
-        // Evitamos comparar shapes grandes o líneas de fondo
         if (obj.TipoObj === 'Shape' || otro.TipoObj === 'Shape') continue;
 
         const colisionH = obj.HPos < (otro.HPos + (otro.Width || 0)) && (obj.HPos + (obj.Width || 0)) > otro.HPos;
@@ -85,6 +77,10 @@ export function runQaLinter(report: FoxProReport | null): QaWarning[] {
             severidad: 'error',
             mensaje: `Colisión detectada: "${label}" se encima con "${otro.Expr.replace(/['"]/g, '')}".`,
             objeto: obj.Expr,
+            relatedItems: [
+              { type: 'band', bandIdx, objIdx },     // El primer objeto
+              { type: 'band', bandIdx, objIdx: i }   // El objeto con el que chocó
+            ]
           });
         }
       }

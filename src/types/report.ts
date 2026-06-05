@@ -9,6 +9,15 @@ export interface IReportObject {
   FontSize?: number;
 }
 
+export interface QaWarning {
+  id: string;
+  severidad: 'error' | 'warning';
+  mensaje: string;
+  banda?: string;
+  objeto?: string;
+  relatedItems?: SelectionItem[];
+}
+
 export interface ReportBand {
   TipoBanda: "PageHeader" | "GroupHeader" | "Detail" | "GroupFooter" | "PageFooter" | "Summary";
   Nivel: number;
