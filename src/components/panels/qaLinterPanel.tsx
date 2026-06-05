@@ -1,7 +1,5 @@
-// src/components/panels/QaLinterPanel.tsx
-import React from 'react';
 import { useReportStore } from '@/store/useReportStore';
-import { runQaLinter, QaWarning } from '@/lib/qaRules';
+import { runQaLinter } from '@/lib/qaRules';
 
 export default function QaLinterPanel() {
   const report = useReportStore((state) => state.report);

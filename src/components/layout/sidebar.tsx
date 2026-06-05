@@ -90,7 +90,6 @@ export default function Sidebar() {
         {activeTab === 'props' && <PropertiesPanel />}
       </div>
 
-      {/* === MANIJA DE REDIMENSIONAMIENTO === */}
       <div
         onMouseDown={startResizing}
         className={`absolute top-0 right-0 w-1.5 h-full cursor-col-resize z-50 group hover:bg-blue-400 transition-colors ${
