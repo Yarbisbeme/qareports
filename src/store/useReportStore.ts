@@ -80,6 +80,8 @@ export const useReportStore = create<ReportStore>((set) => ({
     return exists ? state : { selectedIndices: [selItem] };
   }),
 
+  setSelections: (selections: SelectionItem[]) => set({ selectedIndices: selections }),
+
   updateSelectedObjects: (updates) => set((state) => {
     if (!state.report || state.selectedIndices.length === 0) return state;
     const newReport = { ...state.report };
@@ -143,7 +145,6 @@ export const useReportStore = create<ReportStore>((set) => ({
     return { report: newReport };
   }),
 
-  // === EMPUJE POR TECLADO (Nudging Magnético) ===
   nudgeSelected: (deltaX, deltaY) => set((state) => {
     if (!state.report || state.selectedIndices.length === 0) return state;
     
@@ -252,6 +253,45 @@ export const useReportStore = create<ReportStore>((set) => ({
       report: newReport,
       snapLines: { hPos: snappedHPos, vPos: snappedVPos, bandIdx: null } // <-- ENCIENDE LA LÍNEA
     };
+  }),
+
+  updateBandHeight: (bandIdx, newHeight) => set((state) => {
+    if (!state.report) return state;
+    // Usamos JSON.parse/stringify para clonar profundamente de forma segura
+    const newReport = JSON.parse(JSON.stringify(state.report));
+    
+    // Actualizamos solo la altura de la banda indicada
+    newReport.Bandas[bandIdx].BandHeight = newHeight;
+    
+    return { report: newReport };
+  }),
+
+  resizeSelected: (deltaX, deltaY, edge) => set((state) => {
+    if (!state.report || state.selectedIndices.length === 0) return state;
+    const newReport = JSON.parse(JSON.stringify(state.report));
+    
+    state.selectedIndices.forEach((sel) => {
+      let obj: any;
+      if (sel.type === 'band') obj = newReport.Bandas[sel.bandIdx!].Objetos[sel.objIdx!];
+      else if (sel.type === 'meta') obj = newReport.Metadata[sel.metaKey!];
+      else if (sel.type === 'sysvar') obj = newReport.VariablesSistema[sel.sysIdx!];
+
+      if (!obj) return;
+
+      if (edge.includes('e')) obj.Width = Math.max(10, obj.Width + deltaX);
+      if (edge.includes('s')) obj.Height = Math.max(10, obj.Height + deltaY);
+      if (edge.includes('w')) {
+        const oldRight = obj.HPos + obj.Width;
+        obj.HPos += deltaX;
+        obj.Width = Math.max(10, oldRight - obj.HPos);
+      }
+      if (edge.includes('n')) {
+        const oldBottom = obj.VPos + obj.Height;
+        obj.VPos += deltaY;
+        obj.Height = Math.max(10, oldBottom - obj.VPos);
+      }
+    });
+    return { report: newReport };
   }),
 
   autoScale: (containerWidth) => {

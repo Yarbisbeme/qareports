@@ -19,6 +19,8 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx, type = 
   
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  // Nuevo estado para el tipo de cursor dinámico
+  const [activeCursor, setActiveCursor] = useState('move');
 
   const startMouse = useRef({ x: 0, y: 0 });
   const startMetrics = useRef({ hPos: 0, vPos: 0, width: 0, height: 0 });
@@ -26,7 +28,21 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx, type = 
   const reportBeforeDrag = useRef<FoxProReport | null>(null);
   const saveHistory = useReportStore((state) => state.saveHistory);
 
-  // === RECOLECTOR DE BORDES PARA EL IMÁN ===
+  // === DETECTOR DE BORDES PARA CURSOR ===
+  const updateCursorType = (e: React.MouseEvent) => {
+    if (!isSelected) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const buffer = 10; // Pixeles de tolerancia cerca del borde
+    
+    const nearRight = Math.abs(e.clientX - rect.right) < buffer;
+    const nearBottom = Math.abs(e.clientY - rect.bottom) < buffer;
+
+    if (nearRight && nearBottom) setActiveCursor('nwse-resize');
+    else if (nearRight) setActiveCursor('ew-resize');
+    else if (nearBottom) setActiveCursor('ns-resize');
+    else setActiveCursor('move');
+  };
+
   const populateSnapEdges = () => {
     const report = useReportStore.getState().report;
     const selected = useReportStore.getState().selectedIndices;
@@ -62,8 +78,9 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx, type = 
     startMouse.current = { x: e.clientX, y: e.clientY };
     startMetrics.current = { hPos: obj.HPos, vPos: obj.VPos, width: obj.Width || 0, height: obj.Height || 0 };
     setIsDragging(true);
+    setIsResizing(false);
   };
-
+  
   const handleMouseDownResize = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isSelected || e.ctrlKey || e.shiftKey) toggleSelection(selItem, e.ctrlKey || e.shiftKey);
@@ -72,6 +89,7 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx, type = 
     reportBeforeDrag.current = useReportStore.getState().report;
     startMouse.current = { x: e.clientX, y: e.clientY };
     startMetrics.current = { hPos: obj.HPos, vPos: obj.VPos, width: obj.Width || 0, height: obj.Height || 0 };
+    setIsDragging(false);
     setIsResizing(true);
   };
 
@@ -81,7 +99,7 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx, type = 
       const rawDeltaFruX = pxToFru((e.clientX - startMouse.current.x) / scale);
       const rawDeltaFruY = pxToFru((e.clientY - startMouse.current.y) / scale);
       
-      const snapThreshold = 150; // Sensibilidad del imán
+      const snapThreshold = 150;
       let snappedHPos: number | null = null;
       let snappedVPos: number | null = null;
 
@@ -160,7 +178,12 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx, type = 
 
   if (obj.TipoObj === "Shape" || obj.TipoObj === "Line" || obj.TipoObj === "Picture") {
     return (
-      <div onMouseDown={handleMouseDownDrag} className={`absolute border cursor-move ${isSelected ? 'ring-2 ring-blue-500 z-40' : 'border-gray-400 bg-gray-100/30'} z-20`} style={baseStyle}>
+      <div 
+        onMouseMove={updateCursorType}
+        onMouseDown={(e) => activeCursor.includes('resize') ? handleMouseDownResize(e) : handleMouseDownDrag(e)} 
+        className={`absolute border ${isSelected ? 'ring-2 ring-blue-500 z-40' : 'border-gray-400 bg-gray-100/30'} z-20`} 
+        style={{...baseStyle, cursor: isSelected ? activeCursor : 'move'}}
+      >
         {obj.TipoObj === "Picture" && <span className="text-[8px] text-blue-500 flex justify-center items-center h-full">[IMG]</span>}
         {isSelected && <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-blue-600 cursor-nwse-resize z-50 rounded-sm" onMouseDown={handleMouseDownResize} />}
       </div>
@@ -169,17 +192,26 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx, type = 
 
   return (
     <div 
-      onMouseDown={handleMouseDownDrag} 
-      className={`absolute flex items-center overflow-hidden whitespace-nowrap font-mono tracking-tight cursor-move select-none border transition-colors ${
+      onMouseMove={updateCursorType}
+      onMouseDown={(e) => {
+        if (activeCursor.includes('resize')) {
+          handleMouseDownResize(e); 
+        } else {
+          handleMouseDownDrag(e);
+        }
+      }}
+      className={`absolute flex items-center overflow-hidden whitespace-nowrap font-mono tracking-tight select-none border transition-colors ${
         isSelected 
-          ? 'ring-2 ring-blue-500 bg-blue-100/80 z-40 shadow-lg scale-[1.02]' 
+          ? 'ring-2 ring-blue-500 bg-blue-100/80 z-40 shadow-lg scale-[1.01]' 
           : customClass ? customClass : obj.TipoObj === "Field" ? 'bg-blue-50/60 border-blue-200 text-blue-800' : 'bg-transparent border-transparent text-gray-900 hover:border-gray-300'
-      } z-20`} 
-      style={baseStyle}
+      } z-20`}
+      style={{
+        ...baseStyle,
+        cursor: isSelected ? activeCursor : 'move'
+      }}
     >
       {obj.Label && <span className="font-bold mr-1">{obj.Label.replace(/['"]/g, '')}</span>}
       {obj.Expr ? obj.Expr.replace(/^["']|["']$/g, '') : <span className="opacity-30">vacío</span>}
-      {isSelected && <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-blue-600 cursor-nwse-resize z-50 rounded-sm" onMouseDown={handleMouseDownResize} />}
     </div>
   );
 }
