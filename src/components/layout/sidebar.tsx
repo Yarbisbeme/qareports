@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useReportStore } from '@/store/useReportStore';
 import QaLinterPanel from '../panels/qaLinterPanel';
 import PropertiesPanel from '../panels/propertiesPanel';
@@ -8,8 +8,51 @@ export default function Sidebar() {
   const report = useReportStore((state) => state.report);
   const [activeTab, setActiveTab] = useState<'info' | 'qa' | 'json' | 'props'>('info');
 
+  // === ESTADOS Y REFERENCIAS PARA REDIMENSIONAR ===
+  // 320px equivale a 'w-80' de Tailwind para mantener tu tamaño inicial
+  const [width, setWidth] = useState(320); 
+  const [isResizing, setIsResizing] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+
+  // === LÓGICA DE REDIMENSIONAMIENTO ===
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      // Límites: mínimo 250px, máximo 800px
+      const newWidth = Math.min(Math.max(e.clientX, 250), 800);
+      setWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.body.classList.remove('cursor-col-resize', 'select-none');
+    };
+
+    if (isResizing) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      document.body.classList.add('cursor-col-resize', 'select-none');
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      document.body.classList.remove('cursor-col-resize', 'select-none');
+    };
+  }, [isResizing]);
+
+  const startResizing = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  };
+
   return (
-    <aside className="w-80 border-r bg-white flex flex-col overflow-hidden shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10">
+    // Se quitó 'w-80' y se agregaron 'relative', 'flex-shrink-0' y el 'style'
+    <aside 
+      ref={sidebarRef}
+      style={{ width: `${width}px` }}
+      className="relative flex-shrink-0 border-r bg-white flex flex-col overflow-hidden shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10 transition-[width] duration-0"
+    >
       {/* Tabs */}
       <div className="flex border-b bg-gray-50 text-xs font-medium text-gray-500">
         <button className={`flex-1 py-3 text-center ${activeTab === 'info' ? 'border-b-2 border-blue-600 text-blue-600 bg-white' : 'hover:bg-gray-100'}`} onClick={() => setActiveTab('info')}>Info</button>
@@ -45,6 +88,17 @@ export default function Sidebar() {
         {activeTab === 'qa' && <QaLinterPanel />}
         {activeTab === 'json' && <JsonPanel />}
         {activeTab === 'props' && <PropertiesPanel />}
+      </div>
+
+      {/* === MANIJA DE REDIMENSIONAMIENTO === */}
+      <div
+        onMouseDown={startResizing}
+        className={`absolute top-0 right-0 w-1.5 h-full cursor-col-resize z-50 group hover:bg-blue-400 transition-colors ${
+          isResizing ? 'bg-blue-500' : 'bg-transparent'
+        }`}
+        title="Arrastra para ajustar el ancho"
+      >
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-0.5 bg-gray-300 group-hover:bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
       </div>
     </aside>
   );

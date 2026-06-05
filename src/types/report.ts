@@ -9,6 +9,15 @@ export interface IReportObject {
   FontSize?: number;
 }
 
+export interface QaWarning {
+  id: string;
+  severidad: 'error' | 'warning';
+  mensaje: string;
+  banda?: string;
+  objeto?: string;
+  relatedItems?: SelectionItem[];
+}
+
 export interface ReportBand {
   TipoBanda: "PageHeader" | "GroupHeader" | "Detail" | "GroupFooter" | "PageFooter" | "Summary";
   Nivel: number;
@@ -88,14 +97,16 @@ export interface ReportStore {
   saveHistory: (pastReport: FoxProReport) => void;
   undo: () => void;
   redo: () => void;
-  deleteSelected: () => void;
   nudgeSelected: (deltaX: number, deltaY: number) => void;
   setReport: (data: FoxProReport) => void;
   setSnapLines: (lines: { hPos: number | null, vPos: number | null, bandIdx: number | null }) => void;
-  
+  setSelections: (selections: SelectionItem[]) => void;
   toggleSelection: (item: SelectionItem, multi: boolean) => void;
   updateSelectedObjects: (updates: Partial<IReportObject & MetadataItem>) => void;
   captureSnapshot: () => void;
   applySnapshotDelta: (deltaX: number, deltaY: number, isResize?: boolean) => void;
   autoScale: (containerWidth: number) => void;
+  updateBandHeight:(bandIdx: number, newHeight: number) => void;
+  resizeSelected:(deltaX: number, deltaY: number, edge: string) => void
+  deleteSelected: () => void;
 }

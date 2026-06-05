@@ -20,16 +20,83 @@ export const useReportStore = create<ReportStore>((set) => ({
 
   setSnapLines: (lines) => set({ snapLines: lines }),
   
+  // En src/store/useReportStore.ts, busca tu setReport y cámbialo por esto:
+
   setReport: (data) => {
-    console.log("JSON CRUDO RECIBIDO:", data.Metadata);
+    console.log("JSON CRUDO RECIBIDO:", data);
+
+    // =========================================================
+    // 🧹 MÓDULO DE SANITIZACIÓN AUTOMÁTICA (ETL)
+    // =========================================================
+    // Clonamos los datos para no mutar el JSON original directo
+    const cleanData = JSON.parse(JSON.stringify(data)) as FoxProReport;
+
+    if (cleanData.Bandas && cleanData.Bandas.length > 0) {
+      // 1. Extraer TODOS los objetos a una piscina global
+      const allObjects: any[] = [];
+      cleanData.Bandas.forEach((band) => {
+        if (band.Objetos) {
+          allObjects.push(...band.Objetos);
+        }
+        band.Objetos = []; // Vaciamos las bandas para rellenarlas limpiamente
+      });
+
+      // 2. Calcular las "fronteras" (Start y End) físicas de cada banda
+      let currentTop = 0;
+      const bandBoundaries = cleanData.Bandas.map((band, idx) => {
+        // ¿Dónde empieza lógicamente esta banda según sus objetos originales?
+        // Miramos el JSON crudo original para saber la intención de FoxPro
+        const originalObjs = data.Bandas[idx].Objetos || [];
+        const minVPos = originalObjs.length > 0 
+          ? Math.min(...originalObjs.map(o => o.VPos || 0)) 
+          : currentTop;
+
+        const startVPos = band.TipoBanda === 'PageHeader' ? 0 : Math.max(currentTop, minVPos);
+        currentTop = startVPos;
+
+        return {
+          idx,
+          tipo: band.TipoBanda,
+          start: startVPos,
+          end: 9999999 // Por defecto infinito, lo ajustamos en el paso 3
+        };
+      });
+
+      // 3. Ajustar el 'end' de cada banda usando el 'start' de la siguiente
+      for (let i = 0; i < bandBoundaries.length; i++) {
+        if (i < bandBoundaries.length - 1) {
+          bandBoundaries[i].end = bandBoundaries[i + 1].start;
+        }
+      }
+
+      // 4. Reasignar cada objeto a su banda CORRECTA según su VPos
+      allObjects.forEach((obj) => {
+        let targetIdx = bandBoundaries.findIndex(b => obj.VPos >= b.start && obj.VPos < b.end);
+        
+        // Si por alguna razón el VPos es inmenso, lo mandamos a la última banda (Footer)
+        if (targetIdx === -1) targetIdx = bandBoundaries.length - 1;
+        
+        cleanData.Bandas[targetIdx].Objetos.push(obj);
+      });
+
+      // 5. Ordenar los objetos de arriba hacia abajo para un renderizado limpio
+      cleanData.Bandas.forEach(band => {
+        band.Objetos.sort((a, b) => (a.VPos || 0) - (b.VPos || 0));
+      });
+
+      console.log("JSON SANITIZADO Y ESTRUCTURADO:", cleanData);
+    }
+    // =========================================================
+
     set({ 
-    report: data, 
-    selectedIndices: [], 
-    dragSnapshot: [], 
-    past: [], 
-    future: [], 
-    scale: 1 
-  })
+      report: cleanData, // Pasamos la data limpia al lienzo
+      selectedIndices: [], 
+      dragSnapshot: [], 
+      past: [], 
+      future: [], 
+      scale: 1,
+      snapLines: { hPos: null, vPos: null, bandIdx: null }
+    });
   },
   
   saveHistory: (pastReport) => set((state) => ({ past: [...state.past, pastReport], future: [] })),
@@ -80,6 +147,8 @@ export const useReportStore = create<ReportStore>((set) => ({
     return exists ? state : { selectedIndices: [selItem] };
   }),
 
+  setSelections: (selections: SelectionItem[]) => set({ selectedIndices: selections }),
+
   updateSelectedObjects: (updates) => set((state) => {
     if (!state.report || state.selectedIndices.length === 0) return state;
     const newReport = { ...state.report };
@@ -123,27 +192,54 @@ export const useReportStore = create<ReportStore>((set) => ({
       if (snap.type === 'band') {
         const newObjetos = [...newBandas[snap.bandIdx!].Objetos];
         const obj = { ...newObjetos[snap.objIdx!] };
-        if (isResize) { obj.Width = Math.max(10, snap.width + deltaX); obj.Height = Math.max(10, snap.height + deltaY); } 
-        else { obj.HPos = snap.hPos + deltaX; obj.VPos = snap.vPos + deltaY; }
+        
+        if (isResize) { 
+          obj.Width = Math.max(10, snap.width + deltaX); 
+          obj.Height = Math.max(10, snap.height + deltaY); 
+        } else { 
+          obj.HPos = snap.hPos + deltaX; 
+          obj.VPos = snap.vPos + deltaY; 
+        }
+        
         newObjetos[snap.objIdx!] = obj;
         newBandas[snap.bandIdx!] = { ...newBandas[snap.bandIdx!], Objetos: newObjetos };
       } 
       else if (snap.type === 'meta') {
         const obj = { ...newReport.Metadata[snap.metaKey!] };
-        obj.HPos = snap.hPos + deltaX; obj.VPos = snap.vPos + deltaY;
+        
+        // === LÓGICA DE RESIZE AÑADIDA PARA METADATA ===
+        if (isResize) {
+          obj.Width = Math.max(10, snap.width + deltaX);
+          obj.Height = Math.max(10, snap.height + deltaY);
+        } else {
+          obj.HPos = snap.hPos + deltaX; 
+          obj.VPos = snap.vPos + deltaY;
+        }
+        
         newReport.Metadata[snap.metaKey!] = obj;
       }
       else if (snap.type === 'sysvar') {
         const sysVars = [...newReport.VariablesSistema];
-        sysVars[snap.sysIdx!] = { ...sysVars[snap.sysIdx!], HPos: snap.hPos + deltaX, VPos: snap.vPos + deltaY };
+        const obj = { ...sysVars[snap.sysIdx!] };
+        
+        // === LÓGICA DE RESIZE AÑADIDA PARA VARIABLES DE SISTEMA ===
+        if (isResize) {
+          obj.Width = Math.max(10, snap.width + deltaX);
+          obj.Height = Math.max(10, snap.height + deltaY);
+        } else {
+          obj.HPos = snap.hPos + deltaX; 
+          obj.VPos = snap.vPos + deltaY;
+        }
+        
+        sysVars[snap.sysIdx!] = obj;
         newReport.VariablesSistema = sysVars;
       }
     });
+    
     newReport.Bandas = newBandas;
     return { report: newReport };
   }),
 
-  // === EMPUJE POR TECLADO (Nudging Magnético) ===
   nudgeSelected: (deltaX, deltaY) => set((state) => {
     if (!state.report || state.selectedIndices.length === 0) return state;
     
@@ -252,6 +348,45 @@ export const useReportStore = create<ReportStore>((set) => ({
       report: newReport,
       snapLines: { hPos: snappedHPos, vPos: snappedVPos, bandIdx: null } // <-- ENCIENDE LA LÍNEA
     };
+  }),
+
+  updateBandHeight: (bandIdx, newHeight) => set((state) => {
+    if (!state.report) return state;
+    // Usamos JSON.parse/stringify para clonar profundamente de forma segura
+    const newReport = JSON.parse(JSON.stringify(state.report));
+    
+    // Actualizamos solo la altura de la banda indicada
+    newReport.Bandas[bandIdx].BandHeight = newHeight;
+    
+    return { report: newReport };
+  }),
+
+  resizeSelected: (deltaX, deltaY, edge) => set((state) => {
+    if (!state.report || state.selectedIndices.length === 0) return state;
+    const newReport = JSON.parse(JSON.stringify(state.report));
+    
+    state.selectedIndices.forEach((sel) => {
+      let obj: any;
+      if (sel.type === 'band') obj = newReport.Bandas[sel.bandIdx!].Objetos[sel.objIdx!];
+      else if (sel.type === 'meta') obj = newReport.Metadata[sel.metaKey!];
+      else if (sel.type === 'sysvar') obj = newReport.VariablesSistema[sel.sysIdx!];
+
+      if (!obj) return;
+
+      if (edge.includes('e')) obj.Width = Math.max(10, obj.Width + deltaX);
+      if (edge.includes('s')) obj.Height = Math.max(10, obj.Height + deltaY);
+      if (edge.includes('w')) {
+        const oldRight = obj.HPos + obj.Width;
+        obj.HPos += deltaX;
+        obj.Width = Math.max(10, oldRight - obj.HPos);
+      }
+      if (edge.includes('n')) {
+        const oldBottom = obj.VPos + obj.Height;
+        obj.VPos += deltaY;
+        obj.Height = Math.max(10, oldBottom - obj.VPos);
+      }
+    });
+    return { report: newReport };
   }),
 
   autoScale: (containerWidth) => {
