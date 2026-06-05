@@ -79,44 +79,6 @@ export default function ReportCanvas() {
           />
         )}
 
-        {/* === METADATA GLOBAL (Aplicando FontSize nativo en 'pt') === */}
-        {report.Metadata && (
-          <>
-            {report.Metadata.Company?.Expr && report.Metadata.Company.VPos >= 0 && (
-              <h2 className="absolute font-bold text-gray-900 uppercase tracking-wide z-20 pointer-events-none"
-                  style={{ 
-                    top: `${fruToPx(report.Metadata.Company.VPos)}px`, 
-                    left: `${fruToPx(report.Metadata.Company.HPos)}px`,
-                    fontSize: `${report.Metadata.Company.FontSize || 10}pt` // <--- AQUÍ ESTÁ LA MAGIA
-                  }}>
-                {report.Metadata.Company.Expr.replace(/^["']|["']$/g, '')}
-              </h2>
-            )}
-            
-            {report.Metadata.Title?.Expr && report.Metadata.Title.VPos >= 0 && (
-              <h3 className="absolute font-bold text-gray-800 uppercase z-20 pointer-events-none"
-                  style={{ 
-                    top: `${fruToPx(report.Metadata.Title.VPos)}px`, 
-                    left: `${fruToPx(report.Metadata.Title.HPos)}px`,
-                    fontSize: `${report.Metadata.Title.FontSize || 12}pt` // <--- AQUÍ ESTÁ LA MAGIA
-                  }}>
-                {report.Metadata.Title.Expr.replace(/^["']|["']$/g, '')}
-              </h3>
-            )}
-            
-            {report.Metadata.Subtitle?.Expr && report.Metadata.Subtitle.VPos >= 0 && (
-              <h4 className="absolute text-gray-600 z-20 pointer-events-none"
-                  style={{ 
-                    top: `${fruToPx(report.Metadata.Subtitle.VPos)}px`, 
-                    left: `${fruToPx(report.Metadata.Subtitle.HPos)}px`,
-                    fontSize: `${report.Metadata.Subtitle.FontSize || 9}pt` // <--- AQUÍ ESTÁ LA MAGIA
-                  }}>
-                {report.Metadata.Subtitle.Expr.replace(/^["']|["']$/g, '')}
-              </h4>
-            )}
-          </>
-        )}
-
         {/* 1. RENDERIZAR BANDAS */}
         <div className="w-full relative z-0">
           {(report.Bandas || []).map((band, idx) => (

@@ -31,7 +31,7 @@ export default function Topbar() {
   return (
     <header className="h-14 border-b bg-white flex items-center px-6 justify-between shrink-0 shadow-sm z-20">
       <div className="flex items-center gap-4">
-        <h1 className="font-bold text-gray-800 text-lg tracking-tight">Eikon QA Reports</h1>
+        <h1 className="font-bold text-gray-800 text-lg tracking-tight">QA Reports</h1>
         {report && (
           <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-md border border-blue-200">
             {report.ReportId} ({report.Tipo})

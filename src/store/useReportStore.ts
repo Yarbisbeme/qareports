@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ReportStore } from '@/types/report';
+import { FoxProReport, ReportStore } from '@/types/report';
 
 export const useReportStore = create<ReportStore>((set) => ({
   report: null,
@@ -13,8 +13,15 @@ export const useReportStore = create<ReportStore>((set) => ({
 
   setSnapLines: (lines) => set({ snapLines: lines }),
   
-  // Al cargar un nuevo archivo, limpiamos la historia
-  setReport: (data) => set({ report: data, selectedIndices: [], dragSnapshot: [], past: [], future: [], scale: 1 }),
+  // Al cargar un nuevo archivo, normalizamos el JSON
+  setReport: (data) => set({ 
+    report: data, 
+    selectedIndices: [], 
+    dragSnapshot: [], 
+    past: [], 
+    future: [], 
+    scale: 1 
+  }),
   
   // === MÁQUINA DEL TIEMPO ===
   saveHistory: (pastReport) => set((state) => ({
