@@ -139,8 +139,6 @@ export const useReportStore = create<ReportStore>((set) => ({
       // 2. Calcular las "fronteras" (Start y End) físicas de cada banda
       let currentTop = 0;
       const bandBoundaries = cleanData.Bandas.map((band, idx) => {
-        // ¿Dónde empieza lógicamente esta banda según sus objetos originales?
-        // Miramos el JSON crudo original para saber la intención de FoxPro
         const originalObjs = data.Bandas[idx].Objetos || [];
         const minVPos = originalObjs.length > 0 
           ? Math.min(...originalObjs.map(o => o.VPos || 0)) 
@@ -149,11 +147,14 @@ export const useReportStore = create<ReportStore>((set) => ({
         const startVPos = band.TipoBanda === 'PageHeader' ? 0 : Math.max(currentTop, minVPos);
         currentTop = startVPos;
 
+        // 🌟 FIX: CONGELAMOS EL ANCLAJE EN MEMORIA
+        band.StartVPos = startVPos;
+
         return {
           idx,
           tipo: band.TipoBanda,
           start: startVPos,
-          end: 9999999 // Por defecto infinito, lo ajustamos en el paso 3
+          end: 9999999
         };
       });
 
@@ -208,12 +209,19 @@ export const useReportStore = create<ReportStore>((set) => ({
       nivel = maxNivel + 1;
     }
 
+    let previousEnd = 0;
+    if (newReport.Bandas.length > 0) {
+      const lastBand = newReport.Bandas[newReport.Bandas.length - 1];
+      previousEnd = (lastBand.StartVPos || 0) + (lastBand.BandHeight || 5000);
+    }
+
     // 2. Construir la banda
     const nuevaBanda: any = {
       TipoBanda: tipoBanda,
       Nivel: nivel,
       Objetos: [],
-      BandHeight: 5000 // Da un poco de espacio visual inicial
+      BandHeight: 5000, 
+      StartVPos: previousEnd 
     };
 
     // 3. Forzar que AgrupaPor exista en el JSON si es un grupo, o si nos pasan el parámetro

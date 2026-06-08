@@ -217,7 +217,10 @@ export default function ReportCanvas() {
 
   let totalHeightFru = 0;
   report.Bandas.forEach((band, bandIdx) => {
-    let minVPos = band.TipoBanda === 'PageHeader' || !band.Objetos || band.Objetos.length === 0 ? 0 : Math.min(...band.Objetos.map(o => o.VPos || 0));
+    let minVPos = band.StartVPos !== undefined 
+      ? band.StartVPos 
+      : (band.TipoBanda === 'PageHeader' || !band.Objetos || band.Objetos.length === 0 ? 0 : Math.min(...band.Objetos.map(o => o.VPos || 0)));
+      
     let calculatedHeightFru = 0;
     let nextMinVPos = minVPos;
 
@@ -311,8 +314,10 @@ export default function ReportCanvas() {
     report.Bandas.forEach((band, bandIdx) => {
       bandVisualTops.push(currentTopFru);
       
-      const minVPos = band.TipoBanda === 'PageHeader' || !band.Objetos || band.Objetos.length === 0
-        ? 0 : Math.min(...band.Objetos.map(o => o.VPos || 0));
+      const minVPos = band.StartVPos !== undefined 
+        ? band.StartVPos 
+        : (band.TipoBanda === 'PageHeader' || !band.Objetos || band.Objetos.length === 0 ? 0 : Math.min(...band.Objetos.map(o => o.VPos || 0)));
+      
       bandMinVPos.push(minVPos);
 
       let calculatedHeightFru = 0;
@@ -380,19 +385,8 @@ export default function ReportCanvas() {
   };
 
   
-  return <>
-    <div 
-      ref={containerRef}
-      className={`flex-1 overflow-auto bg-gray-300 text-center relative ${isPanning ? 'cursor-grabbing' : (isSpacePressed ? 'cursor-grab' : '')}`}
-      onMouseDown={handleContainerMouseDown}
-      onMouseMove={handleContainerMouseMove}
-      onMouseUp={handleContainerMouseUp} 
-      onMouseLeave={(e) => {
-        if (isPanning) setIsPanning(false);
-        handleMouseUp(e);
-      }}
-      onClick={() => setActiveBandIdx(null)}
-    >
+    return (
+    <>
       {/* === MODAL PARA VARIABLES DE GRUPO === */}
       {isGroupModalOpen && (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[100]">
@@ -434,171 +428,188 @@ export default function ReportCanvas() {
           </div>
         </div>
       )}
-      <div 
-        className="inline-block text-left relative transition-all duration-75"
-        style={{
-          margin: '40px', 
-          width: `${paperWidthPx * scale}px`, 
-          height: `${totalCanvasHeightPx * scale}px` 
-        }}
-      >
-        <div 
-          ref={canvasRef}
-          onMouseDown={handleMouseDown}
-          className="bg-white shadow-2xl ring-1 ring-black/10 absolute top-0 left-0 origin-top-left select-none"
-          style={{ 
-            width: `${paperWidthPx}px`, 
-            minHeight: `${totalCanvasHeightPx}px`, 
-            transform: `scale(${scale})`
-          }}
-        >
-          
-          {selectionBox && (
-            <div 
-              className="absolute border border-blue-500 bg-blue-500/20 z-50 pointer-events-none"
-              style={{
-                left: `${Math.min(selectionBox.startX, selectionBox.currentX)}px`,
-                top: `${Math.min(selectionBox.startY, selectionBox.currentY)}px`,
-                width: `${Math.abs(selectionBox.currentX - selectionBox.startX)}px`,
-                height: `${Math.abs(selectionBox.currentY - selectionBox.startY)}px`,
-              }}
-            />
-          )}
 
-          {snapLines.hPos !== null && <div className="absolute top-0 bottom-0 w-[1px] bg-red-500 z-50 pointer-events-none" style={{ left: `${fruToPx(snapLines.hPos)}px` }} />}
-          {snapLines.vPos !== null && <div className="absolute left-0 right-0 h-[1px] bg-red-500 z-50 pointer-events-none" style={{ top: `${fruToPx(snapLines.vPos)}px` }} />}
-
-          {report.Metadata && (
-            <>
-              {report.Metadata.Company?.Expr && report.Metadata.Company.VPos >= 0 && (
-                <ReportObject obj={report.Metadata.Company} offsetVPos={0} type="meta" metaKey="Company" customClass="bg-transparent text-gray-900 uppercase font-bold" />
-              )}
-              {report.Metadata.Title?.Expr && report.Metadata.Title.VPos >= 0 && (
-                <ReportObject obj={report.Metadata.Title} offsetVPos={0} type="meta" metaKey="Title" customClass="bg-transparent text-gray-800 uppercase font-bold" />
-              )}
-              {report.Metadata.Subtitle?.Expr && report.Metadata.Subtitle.VPos >= 0 && (
-                <ReportObject obj={report.Metadata.Subtitle} offsetVPos={0} type="meta" metaKey="Subtitle" customClass="bg-transparent text-gray-600" />
-              )}
-            </>
-          )}
-
-          <div className="w-full relative z-0">
-            {(report.Bandas || []).map((band, idx) => (
-              <BandRenderer key={`band-${band.TipoBanda}-${band.Nivel}-${band.AgrupaPor || 'none'}-${idx}`} band={band} bandIdx={idx} />
-            ))}
-          </div>
-
-          {(report.VariablesSistema || []).map((sysVar, idx) => (
-            <ReportObject key={`sys-${idx}`} obj={sysVar} offsetVPos={0} type="sysvar" sysIdx={idx} customClass="bg-green-50/80 border-green-300 text-green-800" />
-          ))}
-        </div>
-      </div>
-
-      <div className="fixed bottom-6 right-6 flex items-center bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden z-50 select-none">
-        <button onClick={zoomOut} className="p-2 hover:bg-gray-100 text-gray-600 active:bg-gray-200 transition-colors" title="Alejar (Ctrl + Rueda Abajo)">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-        </button>
-        <button onClick={zoomReset} className="px-3 py-2 text-xs font-mono font-bold text-gray-700 hover:bg-gray-100 transition-colors min-w-[60px] text-center" title="Restablecer al 100%">
-          {Math.round(scale * 100)}%
-        </button>
-        <button onClick={zoomIn} className="p-2 hover:bg-gray-100 text-gray-600 active:bg-gray-200 transition-colors" title="Acercar (Ctrl + Rueda Arriba)">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-        </button>
-      </div>
-      
       {/* === BARRA DE HERRAMIENTAS (TOOLBAR ESTILO FIGMA) === */}
-      <div className="fixed top-6 left-60 -translate-x-1/2 flex items-center bg-white rounded-xl shadow-lg border border-gray-200 p-1.5 z-50 select-none gap-1">
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center bg-white/90 backdrop-blur-md rounded-full shadow-xl shadow-black/5 border border-black p-1.5 z-[60] select-none gap-1">
         <button 
           onClick={() => addObject('Label')}
-          className="flex items-center gap-1.5 px-3 py-2 hover:bg-gray-100 rounded-lg text-gray-700 text-xs font-semibold transition-colors active:scale-95"
+          className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100/80 rounded-full text-gray-600 hover:text-gray-900 text-[13px] font-medium transition-all active:scale-95"
           title="Añadir Etiqueta (Texto Fijo)"
         >
-          <span className="text-blue-600 font-serif text-sm font-bold">T</span> Label
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>
+          Label
         </button>
         
         <button 
           onClick={() => addObject('Field')}
-          className="flex items-center gap-1.5 px-3 py-2 hover:bg-gray-100 rounded-lg text-gray-700 text-xs font-semibold transition-colors active:scale-95"
+          className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100/80 rounded-full text-gray-600 hover:text-gray-900 text-[13px] font-medium transition-all active:scale-95"
           title="Añadir Campo (Variable/Expresión)"
         >
-          <span className="text-orange-500 font-mono text-sm font-bold">{"{}"}</span> Field
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-orange-500"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+          Field
         </button>
 
-        <div className="w-[1px] h-6 bg-gray-200 mx-1"></div>
+        <div className="w-[1px] h-5 bg-gray-300/60 mx-1"></div>
 
         <button 
           onClick={() => addObject('Shape')}
-          className="flex items-center gap-1.5 px-3 py-2 hover:bg-gray-100 rounded-lg text-gray-700 text-xs font-semibold transition-colors active:scale-95"
+          className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100/80 rounded-full text-gray-600 hover:text-gray-900 text-[13px] font-medium transition-all active:scale-95"
           title="Añadir Rectángulo (Shape)"
         >
-          <div className="w-3 h-3 border-2 border-gray-500 rounded-sm"></div> Shape
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
+          Shape
         </button>
 
         <button 
           onClick={() => addObject('Line')}
-          className="flex items-center gap-1.5 px-3 py-2 hover:bg-gray-100 rounded-lg text-gray-700 text-xs font-semibold transition-colors active:scale-95"
+          className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100/80 rounded-full text-gray-600 hover:text-gray-900 text-[13px] font-medium transition-all active:scale-95"
           title="Añadir Línea"
         >
-          <div className="w-4 h-0.5 bg-gray-500 -rotate-45"></div> Line
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500"><line x1="5" y1="19" x2="19" y2="5"></line></svg>
+          Line
         </button>
 
         <button 
           onClick={() => addObject('Picture')}
-          className="flex items-center gap-1.5 px-3 py-2 hover:bg-gray-100 rounded-lg text-gray-700 text-xs font-semibold transition-colors active:scale-95"
+          className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100/80 rounded-full text-gray-600 hover:text-gray-900 text-[13px] font-medium transition-all active:scale-95"
           title="Añadir Imagen"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-600"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-green-500"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
           Picture
         </button>
 
-        {/* === SEPARADOR PARA LAS BANDAS === */}
-        <div className="w-[1px] h-6 bg-gray-200 mx-1"></div>
+        <div className="w-[1px] h-5 bg-gray-300/60 mx-1"></div>
 
         {/* === DROPDOWN DE BANDAS === */}
         <div className="relative" ref={bandMenuRef}>
           <button 
             onClick={() => setIsBandMenuOpen(!isBandMenuOpen)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors active:scale-95 ${
-              isBandMenuOpen ? 'bg-purple-100 text-purple-700' : 'hover:bg-gray-100 text-gray-700'
+            className={`flex items-center gap-2 px-4 py-2 rounded-full text-[13px] font-medium transition-all active:scale-95 ${
+              isBandMenuOpen ? 'bg-purple-100 text-purple-700' : 'hover:bg-gray-100/80 text-gray-600 hover:text-gray-900'
             }`}
             title="Añadir Banda al Reporte"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-600"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-purple-500"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
             Bandas
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-200 ${isBandMenuOpen ? 'rotate-180' : ''}`}><polyline points="6 9 12 15 18 9"></polyline></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-200 opacity-60 ${isBandMenuOpen ? 'rotate-180' : ''}`}><polyline points="6 9 12 15 18 9"></polyline></svg>
           </button>
 
-          {/* Menú Desplegable */}
           {isBandMenuOpen && (
-            <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 flex flex-col z-50">
-              <span className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Tipos de Banda</span>
+            <div className="absolute top-full right-0 mt-3 w-52 bg-white/95 backdrop-blur-xl border border-gray-200/60 rounded-2xl shadow-xl shadow-black/5 py-2 flex flex-col z-[60]">
+              <span className="px-4 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Añadir Sección</span>
               
-              <button onClick={() => handleAddBand('Title')} className="text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
+              <button onClick={() => handleAddBand('Title')} className="text-left px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
                 Título (Title)
               </button>
-              <button onClick={() => handleAddBand('PageHeader')} className="text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
+              <button onClick={() => handleAddBand('PageHeader')} className="text-left px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
                 Encabezado de Página
               </button>
-              <button onClick={() => handleAddBand('GroupHeader')} className="text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
+              <button onClick={() => handleAddBand('GroupHeader')} className="text-left px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
                 Encabezado de Grupo
               </button>
-              <button onClick={() => handleAddBand('Detail')} className="text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
+              <button onClick={() => handleAddBand('Detail')} className="text-left px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
                 Detalle (Detail)
               </button>
-              <button onClick={() => handleAddBand('GroupFooter')} className="text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
+              <button onClick={() => handleAddBand('GroupFooter')} className="text-left px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
                 Pie de Grupo
               </button>
-              <button onClick={() => handleAddBand('PageFooter')} className="text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
+              <button onClick={() => handleAddBand('PageFooter')} className="text-left px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
                 Pie de Página
               </button>
-              <button onClick={() => handleAddBand('Summary')} className="text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
+              <button onClick={() => handleAddBand('Summary')} className="text-left px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
                 Resumen (Summary)
               </button>
             </div>
           )}
         </div>
       </div>
-    </div>
-    
-  </>
+
+      {/* === CONTENEDOR PRINCIPAL DEL LIENZO === */}
+      <div 
+        ref={containerRef}
+        className={`flex-1 overflow-auto bg-gray-300 text-center relative ${isPanning ? 'cursor-grabbing' : (isSpacePressed ? 'cursor-grab' : '')}`}
+        onMouseDown={handleContainerMouseDown}
+        onMouseMove={handleContainerMouseMove}
+        onMouseUp={handleContainerMouseUp} 
+        onMouseLeave={(e) => {
+          if (isPanning) setIsPanning(false);
+          handleMouseUp(e);
+        }}
+        onClick={() => setActiveBandIdx(null)}
+      >
+        <div 
+          className="inline-block text-left relative transition-all duration-75"
+          style={{
+            margin: '40px', 
+            marginTop: '100px', // Añadido margen superior para que el lienzo no choque con la barra flotante
+            width: `${paperWidthPx * scale}px`, 
+            height: `${totalCanvasHeightPx * scale}px` 
+          }}
+        >
+          <div 
+            ref={canvasRef}
+            onMouseDown={handleMouseDown}
+            className="bg-white shadow-2xl ring-1 ring-black/10 absolute top-0 left-0 origin-top-left select-none"
+            style={{ 
+              width: `${paperWidthPx}px`, 
+              minHeight: `${totalCanvasHeightPx}px`, 
+              transform: `scale(${scale})`
+            }}
+          >
+            {selectionBox && (
+              <div 
+                className="absolute border border-blue-500 bg-blue-500/20 z-50 pointer-events-none"
+                style={{
+                  left: `${Math.min(selectionBox.startX, selectionBox.currentX)}px`,
+                  top: `${Math.min(selectionBox.startY, selectionBox.currentY)}px`,
+                  width: `${Math.abs(selectionBox.currentX - selectionBox.startX)}px`,
+                  height: `${Math.abs(selectionBox.currentY - selectionBox.startY)}px`,
+                }}
+              />
+            )}
+
+            {snapLines.hPos !== null && <div className="absolute top-0 bottom-0 w-[1px] bg-red-500 z-50 pointer-events-none" style={{ left: `${fruToPx(snapLines.hPos)}px` }} />}
+            {snapLines.vPos !== null && <div className="absolute left-0 right-0 h-[1px] bg-red-500 z-50 pointer-events-none" style={{ top: `${fruToPx(snapLines.vPos)}px` }} />}
+
+            {report.Metadata && (
+              <>
+                {report.Metadata.Company?.Expr && report.Metadata.Company.VPos >= 0 && (
+                  <ReportObject obj={report.Metadata.Company} offsetVPos={0} type="meta" metaKey="Company" customClass="bg-transparent text-gray-900 uppercase font-bold" />
+                )}
+                {report.Metadata.Title?.Expr && report.Metadata.Title.VPos >= 0 && (
+                  <ReportObject obj={report.Metadata.Title} offsetVPos={0} type="meta" metaKey="Title" customClass="bg-transparent text-gray-800 uppercase font-bold" />
+                )}
+                {report.Metadata.Subtitle?.Expr && report.Metadata.Subtitle.VPos >= 0 && (
+                  <ReportObject obj={report.Metadata.Subtitle} offsetVPos={0} type="meta" metaKey="Subtitle" customClass="bg-transparent text-gray-600" />
+                )}
+              </>
+            )}
+
+            <div className="w-full relative z-0">
+              {(report.Bandas || []).map((band, idx) => (
+                <BandRenderer key={`band-${band.TipoBanda}-${band.Nivel}-${band.AgrupaPor || 'none'}-${idx}`} band={band} bandIdx={idx} />
+              ))}
+            </div>
+
+            {(report.VariablesSistema || []).map((sysVar, idx) => (
+              <ReportObject key={`sys-${idx}`} obj={sysVar} offsetVPos={0} type="sysvar" sysIdx={idx} customClass="bg-green-50/80 border-green-300 text-green-800" />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* === CONTROLES DE ZOOM FLOTANTES === */}
+      <div className="fixed bottom-6 right-6 flex items-center bg-white/90 backdrop-blur-md rounded-full shadow-lg border border-black overflow-hidden z-[60] select-none p-1">
+        <button onClick={zoomOut} className="p-2 hover:bg-gray-100 rounded-full text-gray-600 transition-colors" title="Alejar (Ctrl + Rueda Abajo)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+        <button onClick={zoomReset} className="px-3 py-1.5 text-[13px] font-mono font-bold text-gray-700 hover:bg-gray-100 rounded-full transition-colors min-w-[60px] text-center" title="Restablecer al 100%">
+          {Math.round(scale * 100)}%
+        </button>
+        <button onClick={zoomIn} className="p-2 hover:bg-gray-100 rounded-full text-gray-600 transition-colors" title="Acercar (Ctrl + Rueda Arriba)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+      </div>
+    </>
+  );
 }

@@ -50,9 +50,11 @@ export default function BandRenderer({ band, bandIdx }: BandRendererProps) {
   const objetos = band.Objetos || []; 
 
   // Calculamos el inicio EXACTO
-  const minVPos = band.TipoBanda === 'PageHeader' 
-    ? 0 
-    : (objetos.length > 0 ? Math.min(...objetos.map(o => o.VPos || 0)) : 0);
+  const minVPos = band.StartVPos !== undefined 
+    ? band.StartVPos 
+    : (band.TipoBanda === 'PageHeader' || !band.Objetos || band.Objetos.length === 0 
+        ? 0 
+        : Math.min(...band.Objetos.map((o: any) => o.VPos || 0)));
 
   let nextMinVPos = minVPos;
   if (report && bandIdx < report.Bandas.length - 1) {

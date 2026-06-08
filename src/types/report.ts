@@ -24,6 +24,7 @@ export interface ReportBand {
   AgrupaPor?: string;
   Objetos: IReportObject[];
   BandHeight: number;
+  StartVPos?: number;
 }
 
 export interface MetadataItem {
