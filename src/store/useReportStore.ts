@@ -26,51 +26,68 @@ export const useReportStore = create<ReportStore>((set) => ({
     
     const newReport = JSON.parse(JSON.stringify(state.report));
 
-    // 💡 LA MAGIA Y SOLUCIÓN: Definimos la variable estrictamente como 'number'
     let targetBandIdx: number;
 
-    // Evaluamos directamente si tenemos una banda activa
     if (state.activeBandIdx !== null) {
       targetBandIdx = state.activeBandIdx;
     } else {
-      // Fallback 1: Si no hay selección, buscamos la banda "Detail"
       const detailIdx = newReport.Bandas.findIndex((b: any) => b.TipoBanda === 'Detail');
       targetBandIdx = detailIdx !== -1 ? detailIdx : 0; 
     }
     
-    // Fallback extremo: Si por algún motivo el índice queda fuera del rango real de bandas
     if (targetBandIdx < 0 || targetBandIdx >= newReport.Bandas.length) {
       targetBandIdx = 0; 
     }
 
-    // Validación de seguridad de la estructura del reporte
     if (!newReport.Bandas || newReport.Bandas.length === 0 || !newReport.Bandas[targetBandIdx]) {
       return {}; 
     }
 
-    // Creamos el objeto inicializando de forma segura la estructura FoxPro
+    let baseVPos = 0;
+    const targetBandObjects = newReport.Bandas[targetBandIdx].Objetos || [];
+
+    if (targetBandObjects.length > 0) {
+      const currentMinVPos = Math.min(...targetBandObjects.map((o: any) => o.VPos || 0));
+      baseVPos = currentMinVPos + 500; 
+    } else {
+      let accumulatedTop = 0;
+      for (let i = 0; i < targetBandIdx; i++) {
+        const b = newReport.Bandas[i];
+        const bObjects = b.Objetos || [];
+        
+        const bMinVPos = bObjects.length > 0 ? Math.min(...bObjects.map((o: any) => o.VPos || 0)) : 0;
+        const bMaxVPos = bObjects.length > 0 
+          ? Math.max(...bObjects.map((o: any) => (o.VPos || 0) + (o.Height || 0))) 
+          : bMinVPos + 5000;
+
+        accumulatedTop += (b.BandHeight !== undefined ? b.BandHeight : (bMaxVPos - bMinVPos));
+      }
+      baseVPos = accumulatedTop + 500; // Margen de seguridad dentro de la banda vacía
+    }
+
+    // 2. Definición estructurada y segura del objeto
     const newObj = {
       TipoObj: tipoObj,
-      Expr: tipoObj === 'Label' ? 'Nuevo Texto' : '',
-      VPos: 0, 
-      HPos: 0, 
-      Width: 10000,
-      Height: 2000,
-      FontSize: 9,
+      Expr: tipoObj === 'Label' ? '"Nuevo Texto"' : tipoObj === 'Field' ? 'MiCampo' : '',
+      VPos: baseVPos, //  Asignación calculada
+      HPos: 500,      // Margen izquierdo inicial estándar
+      Width: tipoObj === 'Line' ? 10000 : (tipoObj === 'Shape' || tipoObj === 'Picture' ? 10000 : 15000),
+      Height: tipoObj === 'Line' ? 100 : (tipoObj === 'Shape' || tipoObj === 'Picture' ? 5000 : 2000),
+      FontSize: tipoObj === 'Label' || tipoObj === 'Field' ? 9 : 0,
     };
 
-    // Nos aseguramos de que el array de Objetos exista en la banda destino
     if (!newReport.Bandas[targetBandIdx].Objetos) {
       newReport.Bandas[targetBandIdx].Objetos = [];
     }
 
-    // Inyectamos el objeto, TypeScript ahora sabe que targetBandIdx es 100% numérico
     newReport.Bandas[targetBandIdx].Objetos.push(newObj);
+    const newObjIdx = newReport.Bandas[targetBandIdx].Objetos.length - 1;
 
     return { 
       past: [...state.past, state.report], 
       future: [], 
-      report: newReport 
+      report: newReport,
+      selectedIndices: [{ type: 'band', bandIdx: targetBandIdx, objIdx: newObjIdx }]
     };
   }),
 
