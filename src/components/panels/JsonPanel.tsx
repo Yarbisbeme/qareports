@@ -3,7 +3,7 @@ import { useReportStore } from '@/store/useReportStore';
 
 export default function JsonPanel() {
   const report = useReportStore((state) => state.report);
-  const setReport = useReportStore((state) => state.setReport); // Necesitamos esto para guardar
+  const setReport = useReportStore((state) => state.setReport); 
   const selectedIndices = useReportStore((state) => state.selectedIndices);
   const toggleSelection = useReportStore((state) => state.toggleSelection);
 
@@ -13,7 +13,7 @@ export default function JsonPanel() {
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll (Solo funciona en modo visor)
+  // Auto-scroll (Solo funciona en modo visor interactivo)
   useEffect(() => {
     if (!isEditing && selectedIndices.length > 0) {
       const lastSelected = selectedIndices[selectedIndices.length - 1];
@@ -34,15 +34,68 @@ export default function JsonPanel() {
 
   // === FUNCIONES DEL EDITOR ===
   const handleEditClick = () => {
-    setRawJson(JSON.stringify(report, null, 2)); // Formateamos a 2 espacios
+    const formattedJson = JSON.stringify(report, null, 2);
+    setRawJson(formattedJson); 
     setIsEditing(true);
     setError(null);
+
+    // === NUEVA MAGIA: Búsqueda y Enfoque Automático en Raw JSON ===
+    if (selectedIndices.length > 0) {
+      // Usamos setTimeout para esperar a que React renderice el <textarea> antes de enfocarlo
+      setTimeout(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+
+        const sel = selectedIndices[selectedIndices.length - 1];
+        let objToFind: any = null;
+        let indentSpaces = 0; // Calculamos la sangría según dónde viva el objeto
+
+        if (sel.type === 'band') {
+          objToFind = report.Bandas[sel.bandIdx!].Objetos[sel.objIdx!];
+          indentSpaces = 8; // Profundidad: Raíz -> Bandas -> Banda -> Objetos -> Obj (8 espacios)
+        } else if (sel.type === 'meta') {
+          objToFind = report.Metadata[sel.metaKey!];
+          indentSpaces = 4; // Profundidad: Raíz -> Metadata -> Obj (4 espacios)
+        } else if (sel.type === 'sysvar') {
+          objToFind = report.VariablesSistema[sel.sysIdx!];
+          indentSpaces = 4; // Profundidad: Raíz -> VariablesSistema -> Obj (4 espacios)
+        }
+
+        if (objToFind) {
+          // 1. Aislamos el objeto y le damos la indentación exacta que tiene en el JSON principal
+          const isolatedJson = JSON.stringify(objToFind, null, 2);
+          const searchString = isolatedJson
+            .split('\n')
+            .map(line => ' '.repeat(indentSpaces) + line)
+            .join('\n');
+          
+          // 2. Buscamos el índice donde empieza este bloque de código
+          const startIndex = formattedJson.indexOf(searchString);
+          
+          if (startIndex !== -1) {
+            const endIndex = startIndex + searchString.length;
+            
+            // 3. Seleccionamos (resaltamos) el texto
+            textarea.focus();
+            textarea.setSelectionRange(startIndex, endIndex);
+            
+            // 4. Calculamos matemáticamente en qué línea estamos para hacer scroll
+            const linesBefore = formattedJson.substring(0, startIndex).split('\n').length;
+            const totalLines = formattedJson.split('\n').length;
+            
+            // Calculamos la posición Y (pixel) y centramos la vista en el tercio superior de la pantalla
+            const scrollY = (textarea.scrollHeight / totalLines) * linesBefore;
+            textarea.scrollTop = Math.max(0, scrollY - (textarea.clientHeight / 3));
+          }
+        }
+      }, 50);
+    }
   };
 
   const handleSaveClick = () => {
     try {
       const parsedData = JSON.parse(rawJson);
-      setReport(parsedData); // Actualiza el estado global y renderiza el lienzo
+      setReport(parsedData); 
       setIsEditing(false);
       setError(null);
     } catch (err: any) {
@@ -50,7 +103,6 @@ export default function JsonPanel() {
     }
   };
 
-  // Permite usar la tecla "Tab" dentro del textarea como en VS Code
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -60,11 +112,9 @@ export default function JsonPanel() {
       const start = target.selectionStart;
       const end = target.selectionEnd;
 
-      // Inserta 2 espacios
       const newText = rawJson.substring(0, start) + '  ' + rawJson.substring(end);
       setRawJson(newText);
 
-      // Mueve el cursor después de los espacios
       setTimeout(() => {
         target.selectionStart = target.selectionEnd = start + 2;
       }, 0);
@@ -100,7 +150,7 @@ export default function JsonPanel() {
 
   return (
     <div className="flex flex-col h-full bg-[#f8f9fa] border-l">
-      {/* BARRA DE HERRAMIENTAS (TIPO VS CODE) */}
+      {/* BARRA DE HERRAMIENTAS */}
       <div className="flex justify-between items-center px-4 py-2 bg-gray-100 border-b shadow-sm z-10">
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
@@ -143,9 +193,6 @@ export default function JsonPanel() {
       {/* ÁREA DE CONTENIDO */}
       <div className="flex-1 overflow-auto relative">
         {isEditing ? (
-          // ==============================
-          // MODO EDITOR DE CÓDIGO
-          // ==============================
           <textarea
             ref={textareaRef}
             value={rawJson}
@@ -160,9 +207,6 @@ export default function JsonPanel() {
             }}
           />
         ) : (
-          // ==============================
-          // MODO VISOR INTERACTIVO ORIGINAL
-          // ==============================
           <div className="font-mono text-[12px] leading-relaxed p-4 whitespace-nowrap text-gray-800 selection:bg-blue-200 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-400">
             <div>{"{"}</div>
             <div className="pl-4"><span className="text-purple-600">"ReportId"</span>: <span className="text-green-600">"{report.ReportId}"</span>,</div>

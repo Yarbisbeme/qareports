@@ -89,20 +89,16 @@ export default function ReportCanvas() {
         
         if (newScale === currentScale) return;
 
-        // 1. Calculamos dónde está el ratón dentro del lienzo
         const rect = canvas.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
 
-        // 2. Calculamos cuánto se expandirá ese punto específico
         const ratio = newScale / currentScale;
         const dx = (mouseX * ratio) - mouseX;
         const dy = (mouseY * ratio) - mouseY;
 
-        // 3. Cambiamos la escala
         useReportStore.getState().setScale(newScale);
 
-        // 4. Inmediatamente compensamos el scroll del contenedor para perseguir el ratón
         setTimeout(() => {
           if (containerRef.current) {
             containerRef.current.scrollLeft += dx;
@@ -124,17 +120,41 @@ export default function ReportCanvas() {
     );
   }
 
-  // === CÁLCULO DE DIMENSIONES DEL LIENZO ===
-  const maxHPos = Math.max(
-    ...(report.Bandas || []).flatMap(b => (b.Objetos || []).map(o => o.HPos + (o.Width || 0))),
-    ...(report.VariablesSistema || []).map(v => v.HPos + 2000)
-  );
+  // =========================================================================
+  // === NUEVA LÓGICA DE LIENZO INFINITO (TAMAÑO DINÁMICO) ===
+  // =========================================================================
+  let maxRightFru = 0;
 
-  const isLandscape = maxHPos > 85000;
-  const paperWidthPx = isLandscape ? 1056 : 816;
-  const paperMinHeightPx = isLandscape ? 816 : 1056;
+  // Función para registrar el punto más a la derecha del reporte
+  const checkRightEdge = (obj: any) => {
+    if (!obj || obj.HPos === undefined) return;
+    // Si no tiene Width, inferimos su tamaño en base a su texto
+    const estimatedWidth = obj.Width || (obj.Expr ? obj.Expr.length * 100 : 2000);
+    const rightEdge = obj.HPos + estimatedWidth;
+    if (rightEdge > maxRightFru) maxRightFru = rightEdge;
+  };
 
-  // Calculamos la altura total aproximada del reporte para el contenedor
+  // Escaneamos absolutamente todos los objetos
+  report.Bandas?.forEach(b => b.Objetos?.forEach(checkRightEdge));
+  ['Company', 'Title', 'Subtitle'].forEach(k => checkRightEdge(report.Metadata?.[k as keyof typeof report.Metadata]));
+  report.VariablesSistema?.forEach(checkRightEdge);
+
+  const maxContentWidthPx = fruToPx(maxRightFru);
+
+  // Decidimos inteligentemente el tamaño de la hoja
+  let paperWidthPx = 816; // Vertical Clásico por defecto
+  
+  if (maxContentWidthPx > 800 && maxContentWidthPx <= 1040) {
+    paperWidthPx = 1056; // Horizontal Clásico
+  } else if (maxContentWidthPx > 1040) {
+    // Lienzo infinito: Crece dinámicamente con un margen de seguridad de 100px
+    paperWidthPx = maxContentWidthPx + 100; 
+  }
+
+  // La altura mínima sigue siendo el estándar, pero la altura real se calculará abajo
+  const paperMinHeightPx = paperWidthPx === 816 ? 1056 : 816;
+
+  // Calculamos la altura total de todas las bandas sumadas
   let totalHeightFru = 0;
   report.Bandas.forEach((band, bandIdx) => {
     let minVPos = band.TipoBanda === 'PageHeader' || !band.Objetos || band.Objetos.length === 0 ? 0 : Math.min(...band.Objetos.map(o => o.VPos || 0));
@@ -307,7 +327,6 @@ export default function ReportCanvas() {
   return (
     <div 
       ref={containerRef}
-      // === SOLUCIÓN 1: QUITAMOS FLEX CENTER Y USAMOS TEXT-CENTER ===
       className={`flex-1 overflow-auto bg-gray-300 text-center relative ${isPanning ? 'cursor-grabbing' : (isSpacePressed ? 'cursor-grab' : '')}`}
       onMouseDown={handleContainerMouseDown}
       onMouseMove={handleContainerMouseMove}
@@ -317,12 +336,11 @@ export default function ReportCanvas() {
         handleMouseUp(e);
       }}
     >
-      {/* === SOLUCIÓN 2: ENVOLTORIO INLINE-BLOCK PARA ARREGLAR BARRAS DE SCROLL === */}
       <div 
         className="inline-block text-left relative transition-all duration-75"
         style={{
-          margin: '40px', // Margen gris alrededor del papel
-          width: `${paperWidthPx * scale}px`, // Le decimos al contenedor gris el tamaño EXACTO del papel escalado
+          margin: '40px', 
+          width: `${paperWidthPx * scale}px`, 
           height: `${totalCanvasHeightPx * scale}px` 
         }}
       >
