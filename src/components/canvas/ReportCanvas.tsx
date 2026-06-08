@@ -23,7 +23,9 @@ export default function ReportCanvas() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (document.activeElement?.tagName === 'INPUT') return;
+      const activeTag = document.activeElement?.tagName.toUpperCase();
+      if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
+
       const NUDGE_STEP = e.shiftKey ? 1000 : 100;
 
       if (e.key === 'Delete' || e.key === 'Backspace') {

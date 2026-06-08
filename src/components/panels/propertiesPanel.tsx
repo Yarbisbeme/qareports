@@ -55,23 +55,43 @@ export default function PropertiesPanel() {
         Inspector de Diseño
       </h3>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-4">
         <span className="text-xs text-gray-500 font-medium">Tipo:</span>
         <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-mono rounded border border-gray-200">
           {sel.type === 'band' ? selectedObj.TipoObj : sel.type === 'meta' ? `Metadata (${sel.metaKey})` : 'Variable Sistema'}
         </span>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <span className="text-xs text-gray-500 font-medium">Expresión / Texto:</span>
-        <input 
-          type="text" 
-          value={selectedObj.Expr || ''}
-          onChange={(e) => handleTextChange('Expr', e.target.value)}
-          className="w-full p-2 bg-gray-50 border border-gray-200 rounded font-mono text-xs text-gray-700 focus:border-blue-500 focus:bg-white outline-none transition-colors"
-        />
+      <div className="space-y-3 bg-white p-3 rounded-md border shadow-sm">
+        {/* === NUEVO: CAMPO LABEL === */}
+        {/* Lo mostramos si el objeto ya tiene Label, o si es explícitamente una Variable de Sistema */}
+        {(selectedObj.Label !== undefined || sel.type === 'sysvar') && (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-blue-600 font-bold tracking-wide">Etiqueta (Label):</span>
+            <input 
+              type="text" 
+              value={selectedObj.Label || ''}
+              onChange={(e) => handleTextChange('Label', e.target.value)}
+              className="w-full p-2 bg-gray-50 border border-gray-200 rounded font-mono text-xs text-gray-700 focus:border-blue-500 focus:bg-white outline-none transition-colors"
+              placeholder="Ej: Página :"
+            />
+          </div>
+        )}
+
+        {/* CAMPO EXPR ORIGINAL */}
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-gray-500 font-bold tracking-wide">Expresión (Expr):</span>
+          <textarea 
+            rows={2}
+            value={selectedObj.Expr || ''}
+            onChange={(e) => handleTextChange('Expr', e.target.value)}
+            className="w-full p-2 bg-gray-50 border border-gray-200 rounded font-mono text-xs text-gray-700 focus:border-blue-500 focus:bg-white outline-none transition-colors resize-none"
+            placeholder="Ej: str(_pageno)"
+          />
+        </div>
       </div>
 
+      {/* TABLA DE PROPIEDADES NUMÉRICAS */}
       <div className="border rounded-md overflow-hidden bg-white shadow-sm mt-4">
         <table className="w-full text-left border-collapse text-xs">
           <thead>
@@ -83,7 +103,6 @@ export default function PropertiesPanel() {
           </thead>
           <tbody className="divide-y text-gray-700 font-mono">
             {(['HPos', 'VPos', 'Width', 'Height', 'FontSize'] as const).map((prop) => {
-              // Si es un objeto de texto sin Width/Height, no mostramos esas propiedades
               if (selectedObj[prop] === undefined && (prop === 'Width' || prop === 'Height')) return null;
 
               return (

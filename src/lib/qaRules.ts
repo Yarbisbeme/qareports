@@ -92,5 +92,35 @@ export function runQaLinter(report: FoxProReport | null): QaWarning[] {
     });
   });
 
+  report.VariablesSistema?.forEach((sysVar, sysIdx) => {
+    
+    const regexTextoConcatenado = /^(['"])(.*?)\1\s*\+/;
+    const matchConcat = sysVar.Expr?.match(regexTextoConcatenado);
+
+    if (matchConcat) {
+      const textoExtraido = matchConcat[2]; // Capturamos lo que estaba dentro de las comillas
+      warnings.push({
+        id: `sysvar-hardcoded-text-${sysIdx}`,
+        banda: 'VariablesSistema',
+        severidad: 'warning',
+        mensaje: `Mala práctica en expresión: Contiene texto estático ("${textoExtraido}"). Debería moverse al campo 'Label' y dejar Expr limpio.`,
+        objeto: sysVar.Expr,
+        relatedItems: [{ type: 'sysvar', sysIdx }] // Para que al hacer clic se seleccione
+      });
+    }
+
+    const regexLabelBasura = /(^""|^"\(|^\(|""$|"\)$|\)$)/;
+    if (sysVar.Label && regexLabelBasura.test(sysVar.Label)) {
+      warnings.push({
+        id: `sysvar-garbage-label-${sysIdx}`,
+        banda: 'VariablesSistema',
+        severidad: 'warning',
+        mensaje: `El Label "${sysVar.Label}" parece ser un código técnico o basura. Considera limpiarlo.`,
+        objeto: sysVar.Label,
+        relatedItems: [{ type: 'sysvar', sysIdx }]
+      });
+    }
+  });
+
   return warnings;
 }
