@@ -20,7 +20,7 @@ export const useReportStore = create<ReportStore>((set) => ({
 
   setSnapLines: (lines) => set({ snapLines: lines }),
   
-  // En src/store/useReportStore.ts, busca tu setReport y cámbialo por esto:
+  setScale: (newScale) => set({ scale: newScale }),
 
   setReport: (data) => {
     console.log("JSON CRUDO RECIBIDO:", data);

@@ -109,4 +109,5 @@ export interface ReportStore {
   updateBandHeight:(bandIdx: number, newHeight: number) => void;
   resizeSelected:(deltaX: number, deltaY: number, edge: string) => void
   deleteSelected: () => void;
+  setScale: (newScale: number) => void;
 }
