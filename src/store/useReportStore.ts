@@ -18,6 +18,74 @@ export const useReportStore = create<ReportStore>((set) => ({
   past: [],
   future: [],
 
+
+  addObject: (tipoObj) => set((state) => {
+    if (!state.report) return state;
+    const newReport = JSON.parse(JSON.stringify(state.report));
+
+    let targetBandIdx = newReport.Bandas.findIndex((b: any) => b.TipoBanda === 'Detail');
+    if (targetBandIdx === -1) targetBandIdx = 0; // Fallback a la primera banda
+
+    let baseVPos = 0;
+    let baseHPos = 0;
+
+    if (state.selectedIndices.length > 0) {
+      const sel = state.selectedIndices[0];
+      if (sel.type === 'band') {
+        targetBandIdx = sel.bandIdx!;
+        const refObj = newReport.Bandas[sel.bandIdx!].Objetos[sel.objIdx!];
+        baseVPos = (refObj.VPos || 0) + 2000; // Lo ponemos un poquito más abajo
+        baseHPos = (refObj.HPos || 0) + 2000; // Y un poquito a la derecha
+      }
+    } else if (newReport.Bandas[targetBandIdx].Objetos.length > 0) {
+      baseVPos = newReport.Bandas[targetBandIdx].Objetos[0].VPos || 0;
+    }
+
+    const newObj: any = {
+      TipoObj: tipoObj,
+      Expr: tipoObj === 'Label' ? '"Nuevo Texto"' : tipoObj === 'Field' ? 'MiCampo' : '',
+      VPos: baseVPos,
+      HPos: baseHPos,
+      Width: tipoObj === 'Line' ? 10000 : (tipoObj === 'Shape' || tipoObj === 'Picture' ? 10000 : 15000),
+      Height: tipoObj === 'Line' ? 104 : (tipoObj === 'Shape' || tipoObj === 'Picture' ? 10000 : 1771),
+      FontSize: tipoObj === 'Label' || tipoObj === 'Field' ? 10 : 0
+    };
+
+    if (tipoObj === 'Label') newObj.Label = 'Nuevo Texto';
+
+    newReport.Bandas[targetBandIdx].Objetos.push(newObj);
+    const newObjIdx = newReport.Bandas[targetBandIdx].Objetos.length - 1;
+
+    return { 
+      past: [...state.past, state.report], 
+      future: [], 
+      report: newReport,
+      selectedIndices: [{ type: 'band', bandIdx: targetBandIdx, objIdx: newObjIdx }]
+    };
+  }),
+
+  createNewReport: () => set({
+    report: {
+      ReportId: "Nuevo_Reporte",
+      Tipo: "Tabular",
+      Metadata: { 
+        Company: { Label: "", Expr: "Nombre Empresa", VPos: 500, HPos: 500, Width: 20000, Height: 2000, FontSize: 12 },
+        Title: { Label: "", Expr: "Título del Reporte", VPos: 3000, HPos: 500, Width: 40000, Height: 2000, FontSize: 14 },
+        Subtitle: { Label: "", Expr: "Subtítulo", VPos: 5000, HPos: 500, Width: 40000, Height: 1500, FontSize: 10 }
+      },
+      VariablesSistema: [],
+      Bandas: [
+      { TipoBanda: "PageHeader", Nivel: 0, Objetos: [], BandHeight: 5000 },
+      { TipoBanda: "Detail", Nivel: 0, Objetos: [], BandHeight: 10000 },   
+      { TipoBanda: "PageFooter", Nivel: 0, Objetos: [], BandHeight: 5000 } 
+    ]
+    },
+    selectedIndices: [],
+    past: [],
+    future: [],
+    scale: 1
+  }),
+
   setSnapLines: (lines) => set({ snapLines: lines }),
   
   setScale: (newScale) => set({ scale: newScale }),
@@ -98,6 +166,42 @@ export const useReportStore = create<ReportStore>((set) => ({
       snapLines: { hPos: null, vPos: null, bandIdx: null }
     });
   },
+
+  // Agrega esto a tu useReportStore.ts
+  addBand: (tipoBanda: string, agrupaPor?: string) => set((state) => {
+    if (!state.report) return state;
+    const newReport = JSON.parse(JSON.stringify(state.report));
+
+    // 1. Calcular el Nivel adecuado si es un Grupo
+    let nivel = 0;
+    if (tipoBanda.includes('Group')) {
+      // Buscamos cuántos grupos ya existen para asignarle el siguiente nivel
+      const grupos = newReport.Bandas.filter((b: any) => b.TipoBanda.includes('Group'));
+      const maxNivel = grupos.length > 0 ? Math.max(...grupos.map((b: any) => b.Nivel || 0)) : 0;
+      nivel = maxNivel + 1;
+    }
+
+    // 2. Construir la banda
+    const nuevaBanda: any = {
+      TipoBanda: tipoBanda,
+      Nivel: nivel,
+      Objetos: [],
+      BandHeight: 5000 // Da un poco de espacio visual inicial
+    };
+
+    // 3. Forzar que AgrupaPor exista en el JSON si es un grupo, o si nos pasan el parámetro
+    if (tipoBanda.includes('Group') || agrupaPor !== undefined) {
+      nuevaBanda.AgrupaPor = agrupaPor || ""; 
+    }
+
+    newReport.Bandas.push(nuevaBanda);
+
+    return { 
+      past: [...state.past, state.report], 
+      future: [], 
+      report: newReport 
+    };
+  }),
   
   saveHistory: (pastReport) => set((state) => ({ past: [...state.past, pastReport], future: [] })),
 

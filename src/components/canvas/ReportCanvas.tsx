@@ -5,6 +5,7 @@ import { SelectionItem } from '@/types/report';
 import BandRenderer from './BandRenderer';
 import ReportObject from './ReportObject';
 
+
 export default function ReportCanvas() {
   const report = useReportStore((state) => state.report);
   const scale = useReportStore((state) => state.scale);
@@ -17,6 +18,15 @@ export default function ReportCanvas() {
   const selectedIndices = useReportStore((state) => state.selectedIndices);
   const setSelections = useReportStore((state) => state.setSelections);
   const setScale = useReportStore((state) => state.setScale); 
+  
+  const createNewReport = useReportStore((state) => state.createNewReport);
+  const addObject = useReportStore((state) => state.addObject);
+  const addBand = useReportStore((state) => state.addBand);
+  const [isBandMenuOpen, setIsBandMenuOpen] = useState(false);
+  const bandMenuRef = useRef<HTMLDivElement>(null);
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [pendingGroupType, setPendingGroupType] = useState('');
+  const [groupVariable, setGroupVariable] = useState('');
 
   // === ESTADOS Y REFS ===
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -28,7 +38,44 @@ export default function ReportCanvas() {
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
-  // === EFECTO 1: ATAJOS DE TECLADO ===
+  const zoomIn = () => setScale(Math.min(3, scale + 0.1));
+  const zoomOut = () => setScale(Math.max(0.2, scale - 0.1));
+  const zoomReset = () => setScale(1);
+
+  // Este efecto cierra el menú si haces clic fuera de él
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (bandMenuRef.current && !bandMenuRef.current.contains(event.target as Node)) {
+        setIsBandMenuOpen(false);
+      }
+    };
+
+    if (isBandMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isBandMenuOpen]);
+
+  const handleAddBand = (tipoBanda: string) => {
+    if (tipoBanda.includes('Group')) {
+      setPendingGroupType(tipoBanda);
+      setGroupVariable('');
+      setIsGroupModalOpen(true);
+      setIsBandMenuOpen(false); // Cerramos el menú desplegable
+    } else {
+      addBand(tipoBanda, "");
+      setIsBandMenuOpen(false);
+    }
+  };
+
+  // Esta función se llamará cuando el usuario haga clic en "Aceptar" en el modal
+  const confirmGroupBand = () => {
+    addBand(pendingGroupType, groupVariable);
+    setIsGroupModalOpen(false);
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -114,8 +161,23 @@ export default function ReportCanvas() {
 
   if (!report) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-gray-100 text-gray-400">
-        <p className="font-medium text-gray-500">Carga un JSON para visualizar el reporte</p>
+      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50">
+        <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center space-y-4">
+          <h2 className="text-2xl font-bold text-gray-800">🦊 FoxPro Report Editor</h2>
+          <p className="text-gray-500">Comienza tu flujo de trabajo de migración:</p>
+          <div className="flex gap-4 justify-center pt-4">
+            <button 
+              onClick={createNewReport}
+              className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 shadow-md transition-all"
+            >
+              Crear Nuevo Reporte
+            </button>
+            <label className="px-6 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 cursor-pointer transition-all">
+              Cargar JSON existente
+              <input type="file" className="hidden" onChange={(e) => {/* lógica de carga aquí */}} />
+            </label>
+          </div>
+        </div>
       </div>
     );
   }
@@ -134,14 +196,12 @@ export default function ReportCanvas() {
     if (rightEdge > maxRightFru) maxRightFru = rightEdge;
   };
 
-  // Escaneamos absolutamente todos los objetos
   report.Bandas?.forEach(b => b.Objetos?.forEach(checkRightEdge));
   ['Company', 'Title', 'Subtitle'].forEach(k => checkRightEdge(report.Metadata?.[k as keyof typeof report.Metadata]));
   report.VariablesSistema?.forEach(checkRightEdge);
 
   const maxContentWidthPx = fruToPx(maxRightFru);
 
-  // Decidimos inteligentemente el tamaño de la hoja
   let paperWidthPx = 816; // Vertical Clásico por defecto
   
   if (maxContentWidthPx > 800 && maxContentWidthPx <= 1040) {
@@ -154,7 +214,6 @@ export default function ReportCanvas() {
   // La altura mínima sigue siendo el estándar, pero la altura real se calculará abajo
   const paperMinHeightPx = paperWidthPx === 816 ? 1056 : 816;
 
-  // Calculamos la altura total de todas las bandas sumadas
   let totalHeightFru = 0;
   report.Bandas.forEach((band, bandIdx) => {
     let minVPos = band.TipoBanda === 'PageHeader' || !band.Objetos || band.Objetos.length === 0 ? 0 : Math.min(...band.Objetos.map(o => o.VPos || 0));
@@ -181,7 +240,6 @@ export default function ReportCanvas() {
   
   const totalCanvasHeightPx = Math.max(paperMinHeightPx, fruToPx(totalHeightFru));
 
-  // === MANEJADORES DE RATÓN ===
   const handleContainerMouseDown = (e: React.MouseEvent) => {
     if (e.button === 1 || (e.button === 0 && (isSpacePressed || e.ctrlKey))) {
       e.preventDefault(); 
@@ -320,11 +378,100 @@ export default function ReportCanvas() {
     setSelectionBox(null);
   };
 
-  const zoomIn = () => setScale(Math.min(3, scale + 0.1));
-  const zoomOut = () => setScale(Math.max(0.2, scale - 0.1));
-  const zoomReset = () => setScale(1);
+  
+  return <>
+    {/* === BARRA DE HERRAMIENTAS (TOOLBAR ESTILO FIGMA) === */}
+    <div className="fixed top-6 left-1/2 -translate-x-1/2 flex items-center bg-white rounded-xl shadow-lg border border-gray-200 p-1.5 z-50 select-none gap-1">
+      <button 
+        onClick={() => addObject('Label')}
+        className="flex items-center gap-1.5 px-3 py-2 hover:bg-gray-100 rounded-lg text-gray-700 text-xs font-semibold transition-colors active:scale-95"
+        title="Añadir Etiqueta (Texto Fijo)"
+      >
+        <span className="text-blue-600 font-serif text-sm font-bold">T</span> Label
+      </button>
+      
+      <button 
+        onClick={() => addObject('Field')}
+        className="flex items-center gap-1.5 px-3 py-2 hover:bg-gray-100 rounded-lg text-gray-700 text-xs font-semibold transition-colors active:scale-95"
+        title="Añadir Campo (Variable/Expresión)"
+      >
+        <span className="text-orange-500 font-mono text-sm font-bold">{"{}"}</span> Field
+      </button>
 
-  return (
+      <div className="w-[1px] h-6 bg-gray-200 mx-1"></div>
+
+      <button 
+        onClick={() => addObject('Shape')}
+        className="flex items-center gap-1.5 px-3 py-2 hover:bg-gray-100 rounded-lg text-gray-700 text-xs font-semibold transition-colors active:scale-95"
+        title="Añadir Rectángulo (Shape)"
+      >
+        <div className="w-3 h-3 border-2 border-gray-500 rounded-sm"></div> Shape
+      </button>
+
+      <button 
+        onClick={() => addObject('Line')}
+        className="flex items-center gap-1.5 px-3 py-2 hover:bg-gray-100 rounded-lg text-gray-700 text-xs font-semibold transition-colors active:scale-95"
+        title="Añadir Línea"
+      >
+        <div className="w-4 h-0.5 bg-gray-500 -rotate-45"></div> Line
+      </button>
+
+      <button 
+        onClick={() => addObject('Picture')}
+        className="flex items-center gap-1.5 px-3 py-2 hover:bg-gray-100 rounded-lg text-gray-700 text-xs font-semibold transition-colors active:scale-95"
+        title="Añadir Imagen"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-600"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+        Picture
+      </button>
+
+      {/* === SEPARADOR PARA LAS BANDAS === */}
+      <div className="w-[1px] h-6 bg-gray-200 mx-1"></div>
+
+      {/* === DROPDOWN DE BANDAS === */}
+      <div className="relative" ref={bandMenuRef}>
+        <button 
+          onClick={() => setIsBandMenuOpen(!isBandMenuOpen)}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors active:scale-95 ${
+            isBandMenuOpen ? 'bg-purple-100 text-purple-700' : 'hover:bg-gray-100 text-gray-700'
+          }`}
+          title="Añadir Banda al Reporte"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-600"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line></svg>
+          Bandas
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-200 ${isBandMenuOpen ? 'rotate-180' : ''}`}><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+
+        {/* Menú Desplegable */}
+        {isBandMenuOpen && (
+          <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 flex flex-col z-50">
+            <span className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Tipos de Banda</span>
+            
+            <button onClick={() => handleAddBand('Title')} className="text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
+              Título (Title)
+            </button>
+            <button onClick={() => handleAddBand('PageHeader')} className="text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
+              Encabezado de Página
+            </button>
+            <button onClick={() => handleAddBand('GroupHeader')} className="text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
+              Encabezado de Grupo
+            </button>
+            <button onClick={() => handleAddBand('Detail')} className="text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
+              Detalle (Detail)
+            </button>
+            <button onClick={() => handleAddBand('GroupFooter')} className="text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
+              Pie de Grupo
+            </button>
+            <button onClick={() => handleAddBand('PageFooter')} className="text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
+              Pie de Página
+            </button>
+            <button onClick={() => handleAddBand('Summary')} className="text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
+              Resumen (Summary)
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
     <div 
       ref={containerRef}
       className={`flex-1 overflow-auto bg-gray-300 text-center relative ${isPanning ? 'cursor-grabbing' : (isSpacePressed ? 'cursor-grab' : '')}`}
@@ -336,6 +483,47 @@ export default function ReportCanvas() {
         handleMouseUp(e);
       }}
     >
+      {/* === MODAL PARA VARIABLES DE GRUPO === */}
+      {isGroupModalOpen && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[100]">
+          <div className="bg-white p-6 rounded-xl shadow-2xl w-96 border border-gray-100">
+            <h3 className="text-base font-bold text-gray-800 mb-2">
+              Añadir {pendingGroupType === 'GroupHeader' ? 'Encabezado' : 'Pie'} de Grupo
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">
+              Introduce el nombre de la variable o expresión por la cual deseas agrupar (ej. <code className="bg-gray-100 px-1 py-0.5 rounded text-pink-600">Wc_Codigo</code>):
+            </p>
+            
+            <input 
+              type="text" 
+              autoFocus
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-5 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all font-mono"
+              placeholder="Nombre de la variable..."
+              value={groupVariable}
+              onChange={(e) => setGroupVariable(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirmGroupBand();
+                if (e.key === 'Escape') setIsGroupModalOpen(false);
+              }}
+            />
+            
+            <div className="flex justify-end gap-2">
+              <button 
+                onClick={() => setIsGroupModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={confirmGroupBand}
+                className="px-4 py-2 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-lg shadow-sm transition-colors"
+              >
+                Aceptar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div 
         className="inline-block text-left relative transition-all duration-75"
         style={{
@@ -354,6 +542,7 @@ export default function ReportCanvas() {
             transform: `scale(${scale})`
           }}
         >
+          
           {selectionBox && (
             <div 
               className="absolute border border-blue-500 bg-blue-500/20 z-50 pointer-events-none"
@@ -407,5 +596,6 @@ export default function ReportCanvas() {
         </button>
       </div>
     </div>
-  );
+    
+  </>
 }

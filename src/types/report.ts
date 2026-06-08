@@ -93,7 +93,8 @@ export interface ReportStore {
   dragSnapshot: (SelectionItem & { hPos: number, vPos: number, width: number, height: number })[];
   snapLines: { hPos: number | null, vPos: number | null, bandIdx: number | null };
   scale: number;
-
+  
+  addObject: (tipoObj: 'Label' | 'Field' | 'Shape' | 'Line' | 'Picture') => void;
   saveHistory: (pastReport: FoxProReport) => void;
   undo: () => void;
   redo: () => void;
@@ -110,4 +111,6 @@ export interface ReportStore {
   resizeSelected:(deltaX: number, deltaY: number, edge: string) => void
   deleteSelected: () => void;
   setScale: (newScale: number) => void;
+  createNewReport: () => void;
+  addBand: (tipoBanda: string, agrupaPor?: string) => void;
 }
