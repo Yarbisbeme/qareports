@@ -93,7 +93,8 @@ export interface ReportStore {
   dragSnapshot: (SelectionItem & { hPos: number, vPos: number, width: number, height: number })[];
   snapLines: { hPos: number | null, vPos: number | null, bandIdx: number | null };
   scale: number;
-  
+  activeBandIdx: number | null;
+  setActiveBandIdx: (idx: number | null) => void
   addObject: (tipoObj: 'Label' | 'Field' | 'Shape' | 'Line' | 'Picture') => void;
   saveHistory: (pastReport: FoxProReport) => void;
   undo: () => void;

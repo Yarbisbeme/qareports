@@ -17,50 +17,60 @@ export const useReportStore = create<ReportStore>((set) => ({
   scale: 1,
   past: [],
   future: [],
+  activeBandIdx: null,
+  
+  setActiveBandIdx: (idx: number | null) => set({ activeBandIdx: idx }),
 
-
-  addObject: (tipoObj) => set((state) => {
-    if (!state.report) return state;
+  addObject: (tipoObj: string) => set((state) => {
+    if (!state.report) return {}; 
+    
     const newReport = JSON.parse(JSON.stringify(state.report));
 
-    let targetBandIdx = newReport.Bandas.findIndex((b: any) => b.TipoBanda === 'Detail');
-    if (targetBandIdx === -1) targetBandIdx = 0; // Fallback a la primera banda
+    // 💡 LA MAGIA Y SOLUCIÓN: Definimos la variable estrictamente como 'number'
+    let targetBandIdx: number;
 
-    let baseVPos = 0;
-    let baseHPos = 0;
-
-    if (state.selectedIndices.length > 0) {
-      const sel = state.selectedIndices[0];
-      if (sel.type === 'band') {
-        targetBandIdx = sel.bandIdx!;
-        const refObj = newReport.Bandas[sel.bandIdx!].Objetos[sel.objIdx!];
-        baseVPos = (refObj.VPos || 0) + 2000; // Lo ponemos un poquito más abajo
-        baseHPos = (refObj.HPos || 0) + 2000; // Y un poquito a la derecha
-      }
-    } else if (newReport.Bandas[targetBandIdx].Objetos.length > 0) {
-      baseVPos = newReport.Bandas[targetBandIdx].Objetos[0].VPos || 0;
+    // Evaluamos directamente si tenemos una banda activa
+    if (state.activeBandIdx !== null) {
+      targetBandIdx = state.activeBandIdx;
+    } else {
+      // Fallback 1: Si no hay selección, buscamos la banda "Detail"
+      const detailIdx = newReport.Bandas.findIndex((b: any) => b.TipoBanda === 'Detail');
+      targetBandIdx = detailIdx !== -1 ? detailIdx : 0; 
+    }
+    
+    // Fallback extremo: Si por algún motivo el índice queda fuera del rango real de bandas
+    if (targetBandIdx < 0 || targetBandIdx >= newReport.Bandas.length) {
+      targetBandIdx = 0; 
     }
 
-    const newObj: any = {
+    // Validación de seguridad de la estructura del reporte
+    if (!newReport.Bandas || newReport.Bandas.length === 0 || !newReport.Bandas[targetBandIdx]) {
+      return {}; 
+    }
+
+    // Creamos el objeto inicializando de forma segura la estructura FoxPro
+    const newObj = {
       TipoObj: tipoObj,
-      Expr: tipoObj === 'Label' ? '"Nuevo Texto"' : tipoObj === 'Field' ? 'MiCampo' : '',
-      VPos: baseVPos,
-      HPos: baseHPos,
-      Width: tipoObj === 'Line' ? 10000 : (tipoObj === 'Shape' || tipoObj === 'Picture' ? 10000 : 15000),
-      Height: tipoObj === 'Line' ? 104 : (tipoObj === 'Shape' || tipoObj === 'Picture' ? 10000 : 1771),
-      FontSize: tipoObj === 'Label' || tipoObj === 'Field' ? 10 : 0
+      Expr: tipoObj === 'Label' ? 'Nuevo Texto' : '',
+      VPos: 0, 
+      HPos: 0, 
+      Width: 10000,
+      Height: 2000,
+      FontSize: 9,
     };
 
-    if (tipoObj === 'Label') newObj.Label = 'Nuevo Texto';
+    // Nos aseguramos de que el array de Objetos exista en la banda destino
+    if (!newReport.Bandas[targetBandIdx].Objetos) {
+      newReport.Bandas[targetBandIdx].Objetos = [];
+    }
 
+    // Inyectamos el objeto, TypeScript ahora sabe que targetBandIdx es 100% numérico
     newReport.Bandas[targetBandIdx].Objetos.push(newObj);
-    const newObjIdx = newReport.Bandas[targetBandIdx].Objetos.length - 1;
 
     return { 
       past: [...state.past, state.report], 
       future: [], 
-      report: newReport,
-      selectedIndices: [{ type: 'band', bandIdx: targetBandIdx, objIdx: newObjIdx }]
+      report: newReport 
     };
   }),
 

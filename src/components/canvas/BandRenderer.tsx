@@ -9,11 +9,18 @@ export default function BandRenderer({ band, bandIdx }: BandRendererProps) {
   const scale = useReportStore((state) => state.scale);
   const updateBandHeight = useReportStore((state) => state.updateBandHeight);
   const saveHistory = useReportStore((state) => state.saveHistory);
+  
+  // 1. NUEVO: Traemos el estado de selección de Zustand
+  const activeBandIdx = useReportStore((state) => state.activeBandIdx);
+  const setActiveBandIdx = useReportStore((state) => state.setActiveBandIdx);
 
   const [isResizing, setIsResizing] = useState(false);
   const startY = useRef(0);
   const startHeight = useRef(0);
   const reportBeforeDrag = useRef<any>(null);
+
+  // 2. NUEVO: Verificamos si esta banda es la que está activa actualmente
+  const isActive = activeBandIdx === bandIdx;
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -40,8 +47,7 @@ export default function BandRenderer({ band, bandIdx }: BandRendererProps) {
     };
   }, [isResizing, scale, bandIdx, updateBandHeight, saveHistory]);
 
-  // ❌ ¡ELIMINADO EL RETURN NULL PARA QUE LAS BANDAS VACÍAS SE VEAN!
-  const objetos = band.Objetos || []; // Fallback seguro
+  const objetos = band.Objetos || []; 
 
   // Calculamos el inicio EXACTO
   const minVPos = band.TipoBanda === 'PageHeader' 
@@ -67,7 +73,7 @@ export default function BandRenderer({ band, bandIdx }: BandRendererProps) {
     const maxBottom = Math.max(...objetos.map(o => (o.VPos || 0) + (o.Height || 0)));
     calculatedHeightFru = maxBottom - minVPos;
   } else {
-    calculatedHeightFru = 5000; // 👈 FRU por defecto si la banda está completamente vacía
+    calculatedHeightFru = 5000; 
   }
 
   const activeHeightFru = band.BandHeight !== undefined ? band.BandHeight : calculatedHeightFru;
@@ -75,6 +81,7 @@ export default function BandRenderer({ band, bandIdx }: BandRendererProps) {
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
+    setActiveBandIdx(bandIdx); // Al redimensionar, también hacemos activa la banda
     reportBeforeDrag.current = useReportStore.getState().report;
     startY.current = e.clientY;
     startHeight.current = activeHeightFru;
@@ -91,10 +98,21 @@ export default function BandRenderer({ band, bandIdx }: BandRendererProps) {
 
   return (
     <div 
-      className="relative w-full border-b border-dashed border-gray-300 overflow-visible group"
+      // 3. NUEVO: Evento onClick para seleccionar la banda
+      onClick={(e) => {
+        e.stopPropagation(); 
+        setActiveBandIdx(bandIdx);
+      }}
+      // 4. NUEVO: Clases dinámicas dependiendo de si está activa (`isActive`)
+      className={`relative w-full border-b border-dashed overflow-visible group transition-all duration-200 cursor-pointer ${
+        isActive 
+          ? 'border-blue-500 ring-1 ring-blue-500 ring-inset shadow-[inset_0_0_10px_rgba(59,130,246,0.1)] z-10' 
+          : 'border-gray-300 hover:bg-gray-50/50 z-0'
+      }`}
       style={{ height: `${bandHeightPx}px`, backgroundColor: bgColors[band.TipoBanda] || '#fff' }}
     >
-      <span className="absolute top-1 right-2 text-[9px] text-gray-400 font-mono select-none z-0 pointer-events-none">
+      {/* Etiqueta de la banda (ahora se vuelve azul si está activa) */}
+      <span className={`absolute top-1 right-2 text-[9px] font-mono select-none z-0 pointer-events-none ${isActive ? 'text-blue-500 font-bold' : 'text-gray-400'}`}>
         {band.TipoBanda} {band.AgrupaPor ? `(${band.AgrupaPor})` : ''} N{band.Nivel}
       </span>
 
@@ -110,7 +128,7 @@ export default function BandRenderer({ band, bandIdx }: BandRendererProps) {
 
       <div 
         onMouseDown={handleMouseDown}
-        className={`absolute bottom-0 left-0 w-full h-[6px] cursor-row-resize z-10 transition-colors ${
+        className={`absolute bottom-0 left-0 w-full h-[6px] cursor-row-resize z-20 transition-colors ${
           isResizing ? 'bg-blue-500' : 'bg-transparent group-hover:bg-blue-300/60'
         }`}
         style={{ transform: 'translateY(50%)' }}
