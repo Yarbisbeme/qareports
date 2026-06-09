@@ -4,7 +4,7 @@ import { fruToPx, pxToFru } from '@/lib/fruConverter';
 import { SelectionItem } from '@/types/report';
 import BandRenderer from './BandRenderer';
 import ReportObject from './ReportObject';
-
+import JsonErrorModal from '../modals/jsonErrorModal';
 
 export default function ReportCanvas() {
   const report = useReportStore((state) => state.report);
@@ -18,6 +18,7 @@ export default function ReportCanvas() {
   const selectedIndices = useReportStore((state) => state.selectedIndices);
   const setSelections = useReportStore((state) => state.setSelections);
   const setScale = useReportStore((state) => state.setScale); 
+  const setReport = useReportStore((state) => state.setReport); 
   
   const createNewReport = useReportStore((state) => state.createNewReport);
   const addObject = useReportStore((state) => state.addObject);
@@ -34,29 +35,27 @@ export default function ReportCanvas() {
   const containerRef = useRef<HTMLDivElement>(null); 
   const [selectionBox, setSelectionBox] = useState<{startX: number, startY: number, currentX: number, currentY: number} | null>(null);
 
-  // === ESTADOS PARA EL PANEO (DESPLAZAMIENTO) ===
+  // === ESTADOS PARA EL PANEO ===
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
+
+  // === 🛡️ ESTADO PARA EL SAFE LOAD (ERRORES DE JSON) ===
+  const [jsonError, setJsonError] = useState<{ visible: boolean; message: string; missingKeys: string[] }>({ visible: false, message: '', missingKeys: [] });
 
   const zoomIn = () => setScale(Math.min(3, scale + 0.1));
   const zoomOut = () => setScale(Math.max(0.2, scale - 0.1));
   const zoomReset = () => setScale(1);
 
-  // Este efecto cierra el menú si haces clic fuera de él
+  // --- Lógica del menú de bandas (sin cambios) ---
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (bandMenuRef.current && !bandMenuRef.current.contains(event.target as Node)) {
         setIsBandMenuOpen(false);
       }
     };
-
-    if (isBandMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
+    if (isBandMenuOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isBandMenuOpen]);
 
   const handleAddBand = (tipoBanda: string) => {
@@ -64,19 +63,19 @@ export default function ReportCanvas() {
       setPendingGroupType(tipoBanda);
       setGroupVariable('');
       setIsGroupModalOpen(true);
-      setIsBandMenuOpen(false); // Cerramos el menú desplegable
+      setIsBandMenuOpen(false); 
     } else {
       addBand(tipoBanda, "");
       setIsBandMenuOpen(false);
     }
   };
 
-  // Esta función se llamará cuando el usuario haga clic en "Aceptar" en el modal
   const confirmGroupBand = () => {
     addBand(pendingGroupType, groupVariable);
     setIsGroupModalOpen(false);
   };
 
+  // --- Lógica de Teclado (sin cambios) ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -120,7 +119,7 @@ export default function ReportCanvas() {
     };
   }, [deleteSelected, undo, redo, nudgeSelected]);
 
-  // === EFECTO 2: ZOOM DIRECTO AL RATÓN ===
+  // --- Lógica de Zoom (sin cambios) ---
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -160,38 +159,94 @@ export default function ReportCanvas() {
     return () => container.removeEventListener('wheel', handleWheelZoom);
   }, [report]);
 
+  // === 🛡️ SAFE LOAD HANDLER ===
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const jsonStr = event.target?.result as string;
+        const parsedData = JSON.parse(jsonStr);
+
+        // Validamos la estructura mínima requerida
+        const requiredKeys = ['ReportId', 'Tipo', 'Metadata', 'Bandas'];
+        const missingKeys = requiredKeys.filter(key => !(key in parsedData));
+
+        if (missingKeys.length > 0) {
+          setJsonError({
+            visible: true,
+            message: 'El archivo JSON no cumple con la estructura de FoxPro requerida.',
+            missingKeys
+          });
+          return; // Detenemos la carga para evitar romper la app
+        }
+
+        if (!Array.isArray(parsedData.Bandas)) {
+          setJsonError({
+            visible: true,
+            message: 'La propiedad "Bandas" debe ser un arreglo de objetos.',
+            missingKeys: ['Bandas (Incorrect Format)']
+          });
+          return;
+        }
+
+        // Si pasa la aduana, limpiamos errores y lo mandamos al store
+        setJsonError({ visible: false, message: '', missingKeys: [] });
+        setReport(parsedData);
+        
+      } catch (error) {
+        setJsonError({
+          visible: true,
+          message: 'El archivo no es un JSON válido o está corrupto.',
+          missingKeys: ['Formato JSON Inválido']
+        });
+      }
+    };
+    reader.readAsText(file);
+    // Limpiamos el input para permitir recargar el mismo archivo
+    e.target.value = '';
+  };
+  
   if (!report) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50">
-        <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center space-y-4">
-          <h2 className="text-2xl font-bold text-gray-800">🦊 FoxPro Report Editor</h2>
-          <p className="text-gray-500">Comienza tu flujo de trabajo de migración:</p>
-          <div className="flex gap-4 justify-center pt-4">
-            <button 
-              onClick={createNewReport}
-              className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 shadow-md transition-all"
-            >
-              Crear Nuevo Reporte
-            </button>
-            <label className="px-6 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 cursor-pointer transition-all">
-              Cargar JSON existente
-              <input type="file" className="hidden" onChange={(e) => {/* lógica de carga aquí */}} />
-            </label>
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative">
+          <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center space-y-4 max-w-md w-full">
+            <h2 className="text-2xl font-bold text-gray-800">🦊 FoxPro Report Editor</h2>
+            <p className="text-gray-500">Comienza tu flujo de trabajo de migración:</p>
+            <div className="flex gap-4 justify-center pt-4">
+              <button 
+                onClick={createNewReport}
+                className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 shadow-md transition-all"
+              >
+                Crear Nuevo Reporte
+              </button>
+              <label className="px-6 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 cursor-pointer transition-all">
+                Cargar JSON existente
+                <input type="file" accept=".json" className="hidden" onChange={handleFileUpload} />
+              </label>
+            </div>
           </div>
+
+          {/* === COMPONENTE MODAL REUTILIZABLE === */}
+          <JsonErrorModal 
+            isOpen={jsonError.visible}
+            onClose={() => setJsonError({ visible: false, message: '', missingKeys: [] })}
+            message={jsonError.message}
+            missingKeys={jsonError.missingKeys}
+          />
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
   // =========================================================================
   // === NUEVA LÓGICA DE LIENZO INFINITO (TAMAÑO DINÁMICO) ===
   // =========================================================================
   let maxRightFru = 0;
 
-  // Función para registrar el punto más a la derecha del reporte
   const checkRightEdge = (obj: any) => {
     if (!obj || obj.HPos === undefined) return;
-    // Si no tiene Width, inferimos su tamaño en base a su texto
     const estimatedWidth = obj.Width || (obj.Expr ? obj.Expr.length * 100 : 2000);
     const rightEdge = obj.HPos + estimatedWidth;
     if (rightEdge > maxRightFru) maxRightFru = rightEdge;
@@ -203,16 +258,10 @@ export default function ReportCanvas() {
 
   const maxContentWidthPx = fruToPx(maxRightFru);
 
-  let paperWidthPx = 816; // Vertical Clásico por defecto
-  
-  if (maxContentWidthPx > 800 && maxContentWidthPx <= 1040) {
-    paperWidthPx = 1056; // Horizontal Clásico
-  } else if (maxContentWidthPx > 1040) {
-    // Lienzo infinito: Crece dinámicamente con un margen de seguridad de 100px
-    paperWidthPx = maxContentWidthPx + 100; 
-  }
+  let paperWidthPx = 816; 
+  if (maxContentWidthPx > 800 && maxContentWidthPx <= 1040) paperWidthPx = 1056; 
+  else if (maxContentWidthPx > 1040) paperWidthPx = maxContentWidthPx + 100; 
 
-  // La altura mínima sigue siendo el estándar, pero la altura real se calculará abajo
   const paperMinHeightPx = paperWidthPx === 816 ? 1056 : 816;
 
   let totalHeightFru = 0;
@@ -244,6 +293,7 @@ export default function ReportCanvas() {
   
   const totalCanvasHeightPx = Math.max(paperMinHeightPx, fruToPx(totalHeightFru));
 
+  // --- Lógica del ratón en lienzo (Sin cambios) ---
   const handleContainerMouseDown = (e: React.MouseEvent) => {
     if (e.button === 1 || (e.button === 0 && (isSpacePressed || e.ctrlKey))) {
       e.preventDefault(); 
@@ -384,8 +434,7 @@ export default function ReportCanvas() {
     setSelectionBox(null);
   };
 
-  
-    return (
+  return (
     <>
       {/* === MODAL PARA VARIABLES DE GRUPO === */}
       {isGroupModalOpen && (
@@ -429,101 +478,6 @@ export default function ReportCanvas() {
         </div>
       )}
 
-      {/* === BARRA DE HERRAMIENTAS (TOOLBAR ESTILO FIGMA) === */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center bg-white/90 backdrop-blur-md rounded-full shadow-xl shadow-black/5 border border-black p-1.5 z-[60] select-none gap-1">
-        <button 
-          onClick={() => addObject('Label')}
-          className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100/80 rounded-full text-gray-600 hover:text-gray-900 text-[13px] font-medium transition-all active:scale-95"
-          title="Añadir Etiqueta (Texto Fijo)"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>
-          Label
-        </button>
-        
-        <button 
-          onClick={() => addObject('Field')}
-          className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100/80 rounded-full text-gray-600 hover:text-gray-900 text-[13px] font-medium transition-all active:scale-95"
-          title="Añadir Campo (Variable/Expresión)"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-orange-500"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
-          Field
-        </button>
-
-        <div className="w-[1px] h-5 bg-gray-300/60 mx-1"></div>
-
-        <button 
-          onClick={() => addObject('Shape')}
-          className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100/80 rounded-full text-gray-600 hover:text-gray-900 text-[13px] font-medium transition-all active:scale-95"
-          title="Añadir Rectángulo (Shape)"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
-          Shape
-        </button>
-
-        <button 
-          onClick={() => addObject('Line')}
-          className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100/80 rounded-full text-gray-600 hover:text-gray-900 text-[13px] font-medium transition-all active:scale-95"
-          title="Añadir Línea"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500"><line x1="5" y1="19" x2="19" y2="5"></line></svg>
-          Line
-        </button>
-
-        <button 
-          onClick={() => addObject('Picture')}
-          className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100/80 rounded-full text-gray-600 hover:text-gray-900 text-[13px] font-medium transition-all active:scale-95"
-          title="Añadir Imagen"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-green-500"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-          Picture
-        </button>
-
-        <div className="w-[1px] h-5 bg-gray-300/60 mx-1"></div>
-
-        {/* === DROPDOWN DE BANDAS === */}
-        <div className="relative" ref={bandMenuRef}>
-          <button 
-            onClick={() => setIsBandMenuOpen(!isBandMenuOpen)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full text-[13px] font-medium transition-all active:scale-95 ${
-              isBandMenuOpen ? 'bg-purple-100 text-purple-700' : 'hover:bg-gray-100/80 text-gray-600 hover:text-gray-900'
-            }`}
-            title="Añadir Banda al Reporte"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-purple-500"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
-            Bandas
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-200 opacity-60 ${isBandMenuOpen ? 'rotate-180' : ''}`}><polyline points="6 9 12 15 18 9"></polyline></svg>
-          </button>
-
-          {isBandMenuOpen && (
-            <div className="absolute top-full right-0 mt-3 w-52 bg-white/95 backdrop-blur-xl border border-gray-200/60 rounded-2xl shadow-xl shadow-black/5 py-2 flex flex-col z-[60]">
-              <span className="px-4 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Añadir Sección</span>
-              
-              <button onClick={() => handleAddBand('Title')} className="text-left px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
-                Título (Title)
-              </button>
-              <button onClick={() => handleAddBand('PageHeader')} className="text-left px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
-                Encabezado de Página
-              </button>
-              <button onClick={() => handleAddBand('GroupHeader')} className="text-left px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
-                Encabezado de Grupo
-              </button>
-              <button onClick={() => handleAddBand('Detail')} className="text-left px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
-                Detalle (Detail)
-              </button>
-              <button onClick={() => handleAddBand('GroupFooter')} className="text-left px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
-                Pie de Grupo
-              </button>
-              <button onClick={() => handleAddBand('PageFooter')} className="text-left px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
-                Pie de Página
-              </button>
-              <button onClick={() => handleAddBand('Summary')} className="text-left px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors">
-                Resumen (Summary)
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
       {/* === CONTENEDOR PRINCIPAL DEL LIENZO === */}
       <div 
         ref={containerRef}
@@ -541,7 +495,7 @@ export default function ReportCanvas() {
           className="inline-block text-left relative transition-all duration-75"
           style={{
             margin: '40px', 
-            marginTop: '100px', // Añadido margen superior para que el lienzo no choque con la barra flotante
+            marginTop: '100px', 
             width: `${paperWidthPx * scale}px`, 
             height: `${totalCanvasHeightPx * scale}px` 
           }}
@@ -599,7 +553,7 @@ export default function ReportCanvas() {
       </div>
 
       {/* === CONTROLES DE ZOOM FLOTANTES === */}
-      <div className="fixed bottom-6 right-6 flex items-center bg-white/90 backdrop-blur-md rounded-full shadow-lg border border-black overflow-hidden z-[60] select-none p-1">
+      <div className="fixed bottom-6 right-6 flex items-center bg-white/90 backdrop-blur-md rounded-full shadow-lg border border-gray-200/60 overflow-hidden z-[60] select-none p-1">
         <button onClick={zoomOut} className="p-2 hover:bg-gray-100 rounded-full text-gray-600 transition-colors" title="Alejar (Ctrl + Rueda Abajo)">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
         </button>
