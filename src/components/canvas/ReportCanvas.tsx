@@ -19,9 +19,11 @@ export default function ReportCanvas() {
   const setSelections = useReportStore((state) => state.setSelections);
   const setScale = useReportStore((state) => state.setScale); 
   const setReport = useReportStore((state) => state.setReport); 
+
+  const isPreviewMode = useReportStore((state) => state.isPreviewMode);
+  const mockData = useReportStore((state) => state.mockData);
   
   const createNewReport = useReportStore((state) => state.createNewReport);
-  const addObject = useReportStore((state) => state.addObject);
   const addBand = useReportStore((state) => state.addBand);
   const [isBandMenuOpen, setIsBandMenuOpen] = useState(false);
   const bandMenuRef = useRef<HTMLDivElement>(null);
@@ -40,14 +42,13 @@ export default function ReportCanvas() {
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
-  // === 🛡️ ESTADO PARA EL SAFE LOAD (ERRORES DE JSON) ===
+  // === 🛡️ ESTADO PARA EL SAFE LOAD ===
   const [jsonError, setJsonError] = useState<{ visible: boolean; message: string; missingKeys: string[] }>({ visible: false, message: '', missingKeys: [] });
 
   const zoomIn = () => setScale(Math.min(3, scale + 0.1));
   const zoomOut = () => setScale(Math.max(0.2, scale - 0.1));
   const zoomReset = () => setScale(1);
 
-  // --- Lógica del menú de bandas (sin cambios) ---
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (bandMenuRef.current && !bandMenuRef.current.contains(event.target as Node)) {
@@ -75,7 +76,6 @@ export default function ReportCanvas() {
     setIsGroupModalOpen(false);
   };
 
-  // --- Lógica de Teclado (sin cambios) ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -119,7 +119,6 @@ export default function ReportCanvas() {
     };
   }, [deleteSelected, undo, redo, nudgeSelected]);
 
-  // --- Lógica de Zoom (sin cambios) ---
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -159,7 +158,6 @@ export default function ReportCanvas() {
     return () => container.removeEventListener('wheel', handleWheelZoom);
   }, [report]);
 
-  // === 🛡️ SAFE LOAD HANDLER ===
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -170,7 +168,6 @@ export default function ReportCanvas() {
         const jsonStr = event.target?.result as string;
         const parsedData = JSON.parse(jsonStr);
 
-        // Validamos la estructura mínima requerida
         const requiredKeys = ['ReportId', 'Tipo', 'Metadata', 'Bandas'];
         const missingKeys = requiredKeys.filter(key => !(key in parsedData));
 
@@ -180,7 +177,7 @@ export default function ReportCanvas() {
             message: 'El archivo JSON no cumple con la estructura de FoxPro requerida.',
             missingKeys
           });
-          return; // Detenemos la carga para evitar romper la app
+          return; 
         }
 
         if (!Array.isArray(parsedData.Bandas)) {
@@ -192,7 +189,6 @@ export default function ReportCanvas() {
           return;
         }
 
-        // Si pasa la aduana, limpiamos errores y lo mandamos al store
         setJsonError({ visible: false, message: '', missingKeys: [] });
         setReport(parsedData);
         
@@ -205,46 +201,40 @@ export default function ReportCanvas() {
       }
     };
     reader.readAsText(file);
-    // Limpiamos el input para permitir recargar el mismo archivo
     e.target.value = '';
   };
   
   if (!report) {
-      return (
-        <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative">
-          <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center space-y-4 max-w-md w-full">
-            <h2 className="text-2xl font-bold text-gray-800">🦊 FoxPro Report Editor</h2>
-            <p className="text-gray-500">Comienza tu flujo de trabajo de migración:</p>
-            <div className="flex gap-4 justify-center pt-4">
-              <button 
-                onClick={createNewReport}
-                className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 shadow-md transition-all"
-              >
-                Crear Nuevo Reporte
-              </button>
-              <label className="px-6 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 cursor-pointer transition-all">
-                Cargar JSON existente
-                <input type="file" accept=".json" className="hidden" onChange={handleFileUpload} />
-              </label>
-            </div>
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 relative">
+        <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center space-y-4 max-w-md w-full">
+          <h2 className="text-2xl font-bold text-gray-800">🦊 FoxPro Report Editor</h2>
+          <p className="text-gray-500">Comienza tu flujo de trabajo de migración:</p>
+          <div className="flex gap-4 justify-center pt-4">
+            <button 
+              onClick={createNewReport}
+              className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 shadow-md transition-all"
+            >
+              Crear Nuevo Reporte
+            </button>
+            <label className="px-6 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 cursor-pointer transition-all">
+              Cargar JSON existente
+              <input type="file" accept=".json" className="hidden" onChange={handleFileUpload} />
+            </label>
           </div>
-
-          {/* === COMPONENTE MODAL REUTILIZABLE === */}
-          <JsonErrorModal 
-            isOpen={jsonError.visible}
-            onClose={() => setJsonError({ visible: false, message: '', missingKeys: [] })}
-            message={jsonError.message}
-            missingKeys={jsonError.missingKeys}
-          />
         </div>
-      );
-    }
 
-  // =========================================================================
-  // === NUEVA LÓGICA DE LIENZO INFINITO (TAMAÑO DINÁMICO) ===
-  // =========================================================================
+        <JsonErrorModal 
+          isOpen={jsonError.visible}
+          onClose={() => setJsonError({ visible: false, message: '', missingKeys: [] })}
+          message={jsonError.message}
+          missingKeys={jsonError.missingKeys}
+        />
+      </div>
+    );
+  }
+
   let maxRightFru = 0;
-
   const checkRightEdge = (obj: any) => {
     if (!obj || obj.HPos === undefined) return;
     const estimatedWidth = obj.Width || (obj.Expr ? obj.Expr.length * 100 : 2000);
@@ -293,7 +283,6 @@ export default function ReportCanvas() {
   
   const totalCanvasHeightPx = Math.max(paperMinHeightPx, fruToPx(totalHeightFru));
 
-  // --- Lógica del ratón en lienzo (Sin cambios) ---
   const handleContainerMouseDown = (e: React.MouseEvent) => {
     if (e.button === 1 || (e.button === 0 && (isSpacePressed || e.ctrlKey))) {
       e.preventDefault(); 
@@ -528,25 +517,56 @@ export default function ReportCanvas() {
             {report.Metadata && (
               <>
                 {report.Metadata.Company?.Expr && report.Metadata.Company.VPos >= 0 && (
-                  <ReportObject obj={report.Metadata.Company} offsetVPos={0} type="meta" metaKey="Company" customClass="bg-transparent text-gray-900 uppercase font-bold" />
+                  <ReportObject obj={report.Metadata.Company} offsetVPos={0} type="meta" metaKey="Company" customClass="bg-transparent text-gray-900 uppercase font-bold" previewData={isPreviewMode ? mockData[0] : undefined} />
                 )}
                 {report.Metadata.Title?.Expr && report.Metadata.Title.VPos >= 0 && (
-                  <ReportObject obj={report.Metadata.Title} offsetVPos={0} type="meta" metaKey="Title" customClass="bg-transparent text-gray-800 uppercase font-bold" />
+                  <ReportObject obj={report.Metadata.Title} offsetVPos={0} type="meta" metaKey="Title" customClass="bg-transparent text-gray-800 uppercase font-bold" previewData={isPreviewMode ? mockData[0] : undefined} />
                 )}
                 {report.Metadata.Subtitle?.Expr && report.Metadata.Subtitle.VPos >= 0 && (
-                  <ReportObject obj={report.Metadata.Subtitle} offsetVPos={0} type="meta" metaKey="Subtitle" customClass="bg-transparent text-gray-600" />
+                  <ReportObject obj={report.Metadata.Subtitle} offsetVPos={0} type="meta" metaKey="Subtitle" customClass="bg-transparent text-gray-600" previewData={isPreviewMode ? mockData[0] : undefined} />
                 )}
               </>
             )}
 
             <div className="w-full relative z-0">
-              {(report.Bandas || []).map((band, idx) => (
-                <BandRenderer key={`band-${band.TipoBanda}-${band.Nivel}-${band.AgrupaPor || 'none'}-${idx}`} band={band} bandIdx={idx} />
-              ))}
+              {(report.Bandas || []).map((band, idx) => {
+                
+                // 1. SI ES BANDA DETAIL: Repetimos por cada registro
+                if (isPreviewMode && band.TipoBanda === 'Detail') {
+                  return mockData.map((dataRow, dataIdx) => (
+                    <BandRenderer 
+                      key={`preview-detail-${dataIdx}`} 
+                      band={band} 
+                      bandIdx={idx} 
+                      previewData={dataRow}
+                    />
+                  ));
+                }
+
+                // 2. SI SON HEADERS/FOOTERS: Les pasamos el primer registro para que traduzcan sus variables
+                return (
+                  <BandRenderer 
+                    key={`band-${band.TipoBanda}-${band.Nivel}-${band.AgrupaPor || 'none'}-${idx}`} 
+                    band={band} 
+                    bandIdx={idx} 
+                    previewData={isPreviewMode && mockData.length > 0 ? mockData[0] : undefined} // 🚀 ESTA ES LA CLAVE
+                  />
+                );
+              })}
             </div>
 
+            {/* Al final de tu JSX */}
             {(report.VariablesSistema || []).map((sysVar, idx) => (
-              <ReportObject key={`sys-${idx}`} obj={sysVar} offsetVPos={0} type="sysvar" sysIdx={idx} customClass="bg-green-50/80 border-green-300 text-green-800" />
+              <ReportObject 
+                key={`sys-${idx}`} 
+                obj={sysVar} 
+                offsetVPos={0} 
+                type="sysvar" 
+                sysIdx={idx} 
+                customClass="bg-green-50/80 border-green-300 text-green-800" 
+                previewData={isPreviewMode ? mockData[0] : undefined} 
+                pageNo={1} // 🚀 Pasamos la página actual como prop
+              />
             ))}
           </div>
         </div>

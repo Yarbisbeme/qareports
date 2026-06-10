@@ -96,6 +96,10 @@ export interface ReportStore {
   snapLines: { hPos: number | null, vPos: number | null, bandIdx: number | null };
   scale: number;
   activeBandIdx: number | null;
+  isPreviewMode: boolean;
+  mockData: Record<string, any>[];
+
+  togglePreviewMode: (enabled: boolean) => void;
   setActiveBandIdx: (idx: number | null) => void
   addObject: (tipoObj: 'Label' | 'Field' | 'Shape' | 'Line' | 'Picture') => void;
   saveHistory: (pastReport: FoxProReport) => void;

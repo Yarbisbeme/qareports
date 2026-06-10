@@ -17,7 +17,9 @@ export default function Topbar() {
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
   const [pendingGroupType, setPendingGroupType] = useState('');
   const [groupVariable, setGroupVariable] = useState('');
-
+  const isPreviewMode = useReportStore((state) => state.isPreviewMode);
+  const mockData = useReportStore((state) => state.mockData);
+  const togglePreviewMode = useReportStore((state) => state.togglePreviewMode);
   const [jsonError, setJsonError] = useState<{ visible: boolean; message: string; missingKeys: string[] }>({ 
     visible: false, message: '', missingKeys: [] 
   });
@@ -98,6 +100,14 @@ export default function Topbar() {
             </span>
           )}
         </div>
+        <button 
+          onClick={() => togglePreviewMode(!isPreviewMode)}
+          className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all mr-4 ${
+            isPreviewMode ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          {isPreviewMode ? '👁️ Modo Diseño' : '📊 Previsualizar Datos'}
+        </button>
         
         {/* 2. CENTRO: Herramientas (Solo visibles si hay reporte) */}
         {report && (

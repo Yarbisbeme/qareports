@@ -1,9 +1,22 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { FoxProReport, ReportObjectProps, SelectionItem } from '@/types/report';
 import { fruToPx, pxToFru } from '@/lib/fruConverter'; 
 import { useReportStore } from '@/store/useReportStore';
 
-export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx, type = 'band', metaKey, sysIdx, customClass }: ReportObjectProps) {
+// 🚀 MODIFICACIÓN: Agregamos pageNo a las props extendidas
+export default function ReportObject({ 
+  obj, 
+  offsetVPos, 
+  bandIdx, 
+  objIdx, 
+  type = 'band', 
+  metaKey, 
+  sysIdx, 
+  customClass, 
+  previewData,
+  pageNo = 1 // 👈 Valor por defecto 1
+}: ReportObjectProps & { previewData?: any; pageNo?: number }) {
+  
   const selectedIndices = useReportStore((state) => state.selectedIndices);
   const toggleSelection = useReportStore((state) => state.toggleSelection);
   const captureSnapshot = useReportStore((state) => state.captureSnapshot);
@@ -19,7 +32,6 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx, type = 
   
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
-  // Nuevo estado para el tipo de cursor dinámico
   const [activeCursor, setActiveCursor] = useState('move');
 
   const startMouse = useRef({ x: 0, y: 0 });
@@ -28,11 +40,10 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx, type = 
   const reportBeforeDrag = useRef<FoxProReport | null>(null);
   const saveHistory = useReportStore((state) => state.saveHistory);
 
-  // === DETECTOR DE BORDES PARA CURSOR ===
   const updateCursorType = (e: React.MouseEvent) => {
     if (!isSelected) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const buffer = 10; // Pixeles de tolerancia cerca del borde
+    const buffer = 10; 
     
     const nearRight = Math.abs(e.clientX - rect.right) < buffer;
     const nearBottom = Math.abs(e.clientY - rect.bottom) < buffer;
@@ -190,6 +201,18 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx, type = 
     );
   }
 
+  // === PROCESAMIENTO DE TEXTO (MODIFICADO) ===
+  let textToRender = obj.Expr ? obj.Expr.replace(/^["']|["']$/g, '').trim() : '';
+
+  if (obj.TipoObj === 'Label') {
+    textToRender = obj.Label ? obj.Label.replace(/['"]/g, '') : textToRender;
+  } 
+  else if (previewData && (obj.TipoObj === 'Field' || obj.TipoObj === 'sysvar' || type === 'sysvar')) {
+    // 🚀 Pasamos la configuración de la página actual al traductor
+    const { evaluateFoxProExpr } = require('@/lib/dataSimulator');
+    textToRender = evaluateFoxProExpr(obj.Expr || '', previewData, { pageNo });
+  }
+
   return (
     <div 
       onMouseMove={updateCursorType}
@@ -203,15 +226,23 @@ export default function ReportObject({ obj, offsetVPos, bandIdx, objIdx, type = 
       className={`absolute flex items-center overflow-hidden whitespace-nowrap font-mono tracking-tight select-none border transition-colors ${
         isSelected 
           ? 'ring-2 ring-blue-500 bg-blue-100/80 z-40 shadow-lg scale-[1.01]' 
-          : customClass ? customClass : obj.TipoObj === "Field" ? 'bg-blue-50/60 border-blue-200 text-blue-800' : 'bg-transparent border-transparent text-gray-900 hover:border-gray-300'
+          : customClass ? customClass : (obj.TipoObj === "Field" ? 'bg-blue-50/60 border-blue-200 text-blue-800' : 'bg-transparent border-transparent text-gray-900 hover:border-gray-300')
       } z-20`}
       style={{
         ...baseStyle,
         cursor: isSelected ? activeCursor : 'move'
       }}
     >
-      {obj.Label && <span className="font-bold mr-1">{obj.Label.replace(/['"]/g, '')}</span>}
-      {obj.Expr ? obj.Expr.replace(/^["']|["']$/g, '') : <span className="opacity-30">vacío</span>}
+      {/* 🚀 Limpieza automática de las dobles comillas repetidas del JSON nativo */}
+      {obj.Label && (
+        <span className="font-bold mr-1">
+          {obj.Label.replace(/^"+|"+$/g, '').replace(/['"]/g, '').trim()}
+        </span>
+      )}
+      
+      {textToRender ? textToRender : <span className="opacity-30">vacío</span>}
+      
+      {isSelected && <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-blue-600 cursor-nwse-resize z-50" onMouseDown={handleMouseDownResize} />}
     </div>
   );
 }

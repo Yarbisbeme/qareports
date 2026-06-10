@@ -18,6 +18,27 @@ export const useReportStore = create<ReportStore>((set) => ({
   past: [],
   future: [],
   activeBandIdx: null,
+  isPreviewMode: false,
+  mockData: [],
+  
+  togglePreviewMode: (enabled) => set((state) => {
+    if (!enabled || !state.report) {
+      return { isPreviewMode: false, mockData: [] };
+    }
+    
+    const { extractFieldsFromSql, extractFieldsFromReport, generateMockRows } = require('@/lib/dataSimulator');
+    
+    // Obtenemos los campos del SQL (si existe)
+    const sqlFields = state.report.sqlStri ? extractFieldsFromSql(state.report.sqlStri) : [];
+    // Obtenemos los campos dinámicos usados en el diseño (ingreso1, neto, etc)
+    const reportFields = extractFieldsFromReport(state.report.Bandas);
+    
+    // Fusionamos ambos sin duplicados
+    const allFields = Array.from(new Set([...sqlFields, ...reportFields]));
+    const mockRows = generateMockRows(allFields, 12); // Generamos 12 registros para ver grupos
+    
+    return { isPreviewMode: true, mockData: mockRows };
+  }),
   
   setActiveBandIdx: (idx: number | null) => set({ activeBandIdx: idx }),
 
