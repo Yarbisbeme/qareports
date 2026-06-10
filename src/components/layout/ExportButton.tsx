@@ -19,7 +19,7 @@ export default function ExportButton() {
     // Configurar la descarga
     const link = document.createElement('a');
     link.href = url;
-    const fileName = `reporte_${report.ReportId || 'editado'}.json`;
+    const fileName = `${report.ReportId || 'editado'}_Semantico.json`;
     link.download = fileName;
     
     // Ejecutar clic y limpiar memoria
