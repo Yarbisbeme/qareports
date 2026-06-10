@@ -56,6 +56,7 @@ export interface ReportMetadata {
 export interface FoxProReport {
   ReportId: string;
   Tipo: string;
+  sqlStri?: string; 
   Metadata: ReportMetadata;
   VariablesSistema: SystemVariable[];
   Bandas: ReportBand[];

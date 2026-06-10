@@ -39,51 +39,45 @@ export default function JsonPanel() {
     setIsEditing(true);
     setError(null);
 
-    // === NUEVA MAGIA: Búsqueda y Enfoque Automático en Raw JSON ===
+    // === Búsqueda y Enfoque Automático en Raw JSON ===
     if (selectedIndices.length > 0) {
-      // Usamos setTimeout para esperar a que React renderice el <textarea> antes de enfocarlo
       setTimeout(() => {
         const textarea = textareaRef.current;
         if (!textarea) return;
 
         const sel = selectedIndices[selectedIndices.length - 1];
         let objToFind: any = null;
-        let indentSpaces = 0; // Calculamos la sangría según dónde viva el objeto
+        let indentSpaces = 0;
 
         if (sel.type === 'band') {
           objToFind = report.Bandas[sel.bandIdx!].Objetos[sel.objIdx!];
-          indentSpaces = 8; // Profundidad: Raíz -> Bandas -> Banda -> Objetos -> Obj (8 espacios)
+          indentSpaces = 8;
         } else if (sel.type === 'meta') {
           objToFind = report.Metadata[sel.metaKey!];
-          indentSpaces = 4; // Profundidad: Raíz -> Metadata -> Obj (4 espacios)
+          indentSpaces = 4;
         } else if (sel.type === 'sysvar') {
           objToFind = report.VariablesSistema[sel.sysIdx!];
-          indentSpaces = 4; // Profundidad: Raíz -> VariablesSistema -> Obj (4 espacios)
+          indentSpaces = 4;
         }
 
         if (objToFind) {
-          // 1. Aislamos el objeto y le damos la indentación exacta que tiene en el JSON principal
           const isolatedJson = JSON.stringify(objToFind, null, 2);
           const searchString = isolatedJson
             .split('\n')
             .map(line => ' '.repeat(indentSpaces) + line)
             .join('\n');
           
-          // 2. Buscamos el índice donde empieza este bloque de código
           const startIndex = formattedJson.indexOf(searchString);
           
           if (startIndex !== -1) {
             const endIndex = startIndex + searchString.length;
             
-            // 3. Seleccionamos (resaltamos) el texto
             textarea.focus();
             textarea.setSelectionRange(startIndex, endIndex);
             
-            // 4. Calculamos matemáticamente en qué línea estamos para hacer scroll
             const linesBefore = formattedJson.substring(0, startIndex).split('\n').length;
             const totalLines = formattedJson.split('\n').length;
             
-            // Calculamos la posición Y (pixel) y centramos la vista en el tercio superior de la pantalla
             const scrollY = (textarea.scrollHeight / totalLines) * linesBefore;
             textarea.scrollTop = Math.max(0, scrollY - (textarea.clientHeight / 3));
           }
@@ -211,6 +205,14 @@ export default function JsonPanel() {
             <div>{"{"}</div>
             <div className="pl-4"><span className="text-purple-600">"ReportId"</span>: <span className="text-green-600">"{report.ReportId}"</span>,</div>
             <div className="pl-4"><span className="text-purple-600">"Tipo"</span>: <span className="text-green-600">"{report.Tipo}"</span>,</div>
+            
+            {/* 🚀 NUEVO: Renderizado elegante del bloque SQL en la raíz */}
+            {report.sqlStri !== undefined && (
+              <div className="pl-4">
+                <span className="text-purple-600">"sqlStri"</span>: <span className="text-green-600">{JSON.stringify(report.sqlStri)}</span>,
+              </div>
+            )}
+
             <div className="pl-4"><span className="text-purple-600">"Metadata"</span>: {"{"}</div>
             
             {['Company', 'Title', 'Subtitle'].map((key, i) => {
