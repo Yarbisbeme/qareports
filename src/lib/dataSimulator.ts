@@ -107,7 +107,7 @@ export function extractFieldsFromSql(sql: string): string[] {
 export function extractFieldsFromReport(bandas: any[]): string[] {
   const fields = new Set<string>();
   // 🚀 ADVERTENCIA: Agregamos 'gdesc_cod' para evitar que se confunda con un campo real de la DB
-  const reserved = ['iif', 'allt', 'alltr', 'alltrim', 'str', 'date', 'time', 'gmes', 'val', 'etiquetas', 'gdesc_cod'];
+  const reserved = ['iif', 'allt', 'alltr', 'alltrim', 'trim', 'str', 'date', 'time', 'gmes', 'val', 'etiquetas', 'gdesc_cod'];
   
   bandas.forEach(b => {
     b.Objetos?.forEach((o: any) => {
@@ -240,7 +240,7 @@ export function generateMockRows(fields: string[], numRows: number = 10): Record
 }
 
 /**
- * 4. Traductor Matemático y Lógico de FoxPro a JS (Versión Segura con inyección de Scope)
+ * 4. Traductor Matemático y Lógico de FoxPro a JS (Versión Runtime VFP Integrado)
  */
 export function evaluateFoxProExpr(
   expr: string, 
@@ -249,6 +249,7 @@ export function evaluateFoxProExpr(
 ): string {
   const cleanExpr = expr.trim();
 
+  // 1. Lectura directa (optimización para campos simples sin concatenaciones)
   const exactMatchKey = Object.keys(dataRow).find(k => k.toLowerCase() === cleanExpr.toLowerCase());
   if (exactMatchKey && !cleanExpr.includes('+') && !cleanExpr.includes('(')) {
     const val = dataRow[exactMatchKey];
@@ -257,22 +258,18 @@ export function evaluateFoxProExpr(
       : String(val);
   }
 
-  // 🚀 PASO 1: Limpieza de punteros/estructuras (query.Codepe -> Codepe)
+  // 2. Limpieza de punteros y booleanos FoxPro
   let jsExpr = cleanExpr
-    .replace(/[a-zA-Z_]+\./g, '') // Remueve prefijos de cursores/alias (ej: "query.", "maestro.")
+    .replace(/[a-zA-Z_]+\./g, '') // Remueve alias (ej: "query.wc_tipo_tr" -> "wc_tipo_tr")
     .replace(/\.T\./gi, 'true')    
     .replace(/\.F\./gi, 'false')
     .replace(/\.NULL\./gi, 'null')
-    .replace(/alltrim\(([^)]+)\)/gi, '$1')
-    .replace(/allt\(([^)]+)\)/gi, '$1')
-    .replace(/alltr\(([^)]+)\)/gi, '$1')
-    .replace(/str\(([^)]+)\)/gi, '$1')
-    .replace(/gmes\(([^)]+)\)/gi, '"OCTUBRE"') 
     .replace(/date\(\)/gi, `"${new Date().toLocaleDateString('es-ES')}"`)
     .replace(/time\(\)/gi, `"${new Date().toLocaleTimeString('es-ES')}"`)
     .replace(/_pageno/gi, `"${context?.pageNo ?? 1}"`);
 
-  // Reemplazo de variables/columnas por sus valores en la fila actual
+  // 3. Inyección de variables
+  // Ordenamos para que llaves largas no se confundan con cortas
   const keys = Object.keys(dataRow).sort((a, b) => b.length - a.length);
   keys.forEach(key => {
     const regex = new RegExp(`\\b${key}\\b`, 'gi');
@@ -283,35 +280,55 @@ export function evaluateFoxProExpr(
     jsExpr = jsExpr.replace(regex, String(val));
   });
 
-  jsExpr = jsExpr.replace(/iif\(([^,]+),([^,]+),([^)]+)\)/gi, '($1 ? $2 : $3)');
-  jsExpr = jsExpr.replace(/<>/g, '!==');
-  jsExpr = jsExpr.replace(/(?<![=<>!])=(?![=])/g, '==='); 
+  // 4. Traducción Operadores Lógicos FoxPro -> JS
+  jsExpr = jsExpr.replace(/<>/g, '!=='); // Distinto
+  jsExpr = jsExpr.replace(/(?<![=<>!])=(?![=])/g, '==='); // Igualdad
+  jsExpr = jsExpr.replace(/\bAND\b/gi, '&&');
+  jsExpr = jsExpr.replace(/\bOR\b/gi, '||');
+  jsExpr = jsExpr.replace(/\bNOT\b/gi, '!');
 
   try {
-    // 🚀 PASO 2: Inyección de la UDF gdesc_cod en el Runtime Local antes de evaluar
+    // ====================================================================
+    // 🚀 PASO VITAL: VIRTUAL MACHINE DE FOXPRO (UDFs inyectadas localmente)
+    // ====================================================================
+    
+    // 1. Lógica y Transformación
+    const iif = (condition: boolean, trueResult: any, falseResult: any) => condition ? trueResult : falseResult;
+    const empty = (val: any) => !val || String(val).trim() === '' || val === 0;
+    const nvl = (val1: any, val2: any) => (val1 === null || val1 === undefined) ? val2 : val1;
+    
+    // 2. Cadenas de texto
+    const alltrim = (val: any) => String(val || '').trim();
+    const allt = alltrim;
+    const alltr = alltrim;
+    const str = (val: any) => String(val || '');
+    const val = (v: any) => Number(v) || 0;
+    const gmes = (v: any) => "OCTUBRE"; // Mock genérico de mes
+
+    // 3. Consultas a Catálogos (gdesc_cod)
     const gdesc_cod = (codigo: any, tabla: string, campoDesc: string, campoCod: string) => {
       const t = String(tabla).toLowerCase();
-      // Extraemos cualquier número en el código simulado para amarrarlo al índice del array mock
       const idx = parseInt(String(codigo).replace(/[^0-9]/g, '')) || 0;
-
-      if (t === 'tubicacion') {
-        const ubiDesc = ['TECNOLOGÍA', 'VENTAS', 'CONTABILIDAD', 'ALMACÉN', 'RECURSOS HUMANOS'];
-        return ubiDesc[idx % ubiDesc.length];
-      }
-      if (t === 'tcentro') {
-        const centroDesc = ['CENTRO OPERATIVO HERRERA', 'ADMINISTRACIÓN CENTRAL', 'CENTRO DE DISTRIBUCIÓN', 'PRODUCCIÓN PLANTA 1'];
-        return centroDesc[idx % centroDesc.length];
-      }
-      return `[MOCK DESC: ${tabla} (${codigo})]`;
+      if (t === 'tubicacion') return ['TECNOLOGÍA', 'VENTAS', 'CONTABILIDAD', 'ALMACÉN', 'RECURSOS HUMANOS'][idx % 5];
+      if (t === 'tcentro') return ['CENTRO OPERATIVO HERRERA', 'ADMINISTRACIÓN CENTRAL', 'CENTRO DE DISTRIBUCIÓN'][idx % 3];
+      if (t === 'toficinas' || t === 'toficina') return ['OF. PRINCIPAL', 'SUCURSAL NORTE', 'SEDE CENTRAL'][idx % 3];
+      return `[DESC: ${tabla.toUpperCase()}]`;
     };
 
+    // ====================================================================
+
+    // Ejecutamos la expresión (JavaScript ahora "entiende" FoxPro)
     // eslint-disable-next-line no-eval
     const result = eval(jsExpr);
+    
+    // Si el resultado es un número flotante, le damos formato de moneda/cantidad
     if (typeof result === 'number' && !Number.isNaN(result)) {
         return result.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
+    
     return result !== undefined && result !== null ? String(result) : '';
   } catch (e) {
+    // Fallback: Si ocurre un error, mostramos la expresión sin comillas
     return cleanExpr.replace(/^["']|["']$/g, '');
   }
 }
